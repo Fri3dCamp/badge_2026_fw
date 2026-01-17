@@ -2,16 +2,20 @@
 #include <stdio.h>
 #include <debug.h>
 
-// ananlog pins
+// analog pins (PA0-PA7, PB0-PB1, PC0-PC3 : 13 channels)
 #define BATTERY_MONITOR_PORT GPIOC // PC0: Battery Monitor
 #define BATTERY_MONITOR_PIN GPIO_Pin_0
+#define BATTERY_MONITOR_CHANNEL ADC_Channel_9
 #define USB_MONITOR_PORT GPIOC // PC3: USB Monitor
 #define USB_MONITOR_PIN GPIO_Pin_0
+#define USB_MONITOR_CHANNEL ADC_Channel_12
 #define JOYSTICK_Y_PORT GPIOA // PA5: JoyY
 #define JOYSTICK_Y_PIN GPIO_Pin_5
+#define JOYSTICK_Y_CHANNEL ADC_Channel_4
 #define JOYSTICK_X_PORT GPIOA // PA6: JoyX
 #define JOYSTICK_X_PIN GPIO_Pin_6
-#define ADC_CHANNEL_TO_USE ADC_Channel_0
+#define JOYSTICK_X_CHANNEL ADC_Channel_5
+#define ADC_CHANNELS (5) // 4 inputs + Vref
 
 // digital inputs
 #define CHARGER_CHARGING_PORT GPIOA // PA2: Charger, charging
@@ -124,6 +128,7 @@ static void IIC_Init(void)
 {
     GPIO_InitTypeDef GPIO_InitStructure = {0};
     I2C_InitTypeDef I2C_InitStructure = {0};
+    NVIC_InitTypeDef NVIC_InitStruct = {0};
 
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOC, ENABLE);
     RCC_APB1PeriphClockCmd(RCC_APB1Periph_I2C1, ENABLE);
@@ -148,6 +153,23 @@ static void IIC_Init(void)
     I2C_InitStructure.I2C_AcknowledgedAddress = I2C_AcknowledgedAddress_7bit;
     I2C_Init(I2C1, &I2C_InitStructure);
 
+    // Step 4: NVIC configuration for I2C interrupts
+    NVIC_InitStruct.NVIC_IRQChannel = I2C1_EV_IRQn;
+    NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 0;
+    NVIC_InitStruct.NVIC_IRQChannelSubPriority = 1;
+    NVIC_InitStruct.NVIC_IRQChannelCmd = ENABLE;
+    NVIC_Init(&NVIC_InitStruct);
+
+    NVIC_InitStruct.NVIC_IRQChannel = I2C1_ER_IRQn;
+    NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 0;
+    NVIC_InitStruct.NVIC_IRQChannelSubPriority = 1;
+    NVIC_InitStruct.NVIC_IRQChannelCmd = ENABLE;
+    NVIC_Init(&NVIC_InitStruct);
+
+    // Step 5: Configure I2C interrupts
+    I2C_ITConfig(I2C1, I2C_IT_EVT | I2C_IT_ERR | I2C_IT_BUF, ENABLE); // TODO: also I2C_IT_BUF?
+
+    I2C_StretchClockCmd(I2C1, ENABLE);
     I2C_Cmd(I2C1, ENABLE);
 }
 
@@ -341,7 +363,7 @@ int main(void)
     printf("ChipID: %08x\r\n", (unsigned)DBGMCU_GetCHIPID());
 
     Gpio_Init();
-    IIC_Init();
+    IIC_Init(); // maps SWD lines to I2C
     PWM_Init();
     ADC_Function_Init();
 
@@ -366,4 +388,171 @@ void HardFault_Handler(void)
     while (1)
     {
     }
+}
+
+void EXTI7_0_IRQHandler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
+void EXTI7_0_IRQHandler(void)
+{
+    if (EXTI_GetITStatus(EXTI_Line0) != RESET)
+    {
+        printf("interrupt\r\n");
+        inputChanged = 1; // Setting a flag instead of printing directly from the ISR()
+        // read all inputs?
+        EXTI_ClearITPendingBit(EXTI_Line0); // Clearing ISR flag
+    }
+}
+
+static void I2C1_ClearErrorFlags(void)
+{ // clear the various error flags that may block further communication
+
+    if (I2C_GetFlagStatus(I2C1, I2C_FLAG_AF) != RESET)
+    { //  I2C_FLAG_AF - Acknowledge failure flag.
+        I2C_ClearFlag(I2C1, I2C_FLAG_AF);
+    }
+    if (I2C_GetFlagStatus(I2C1, I2C_FLAG_BERR) != RESET)
+    { //  I2C_FLAG_BERR -Bus Error flag.
+        I2C_ClearFlag(I2C1, I2C_FLAG_BERR);
+    }
+}
+
+static void I2C1_ClearStopFlag(void)
+{ // clear the stop flag
+    if (I2C_GetFlagStatus(I2C1, I2C_FLAG_STOPF) != RESET)
+    { // Stop detection flag (Slave mode).
+        // STOPF (STOP detection) is cleared by software sequence: a read operation
+        // to I2C_STAR1 register (I2C_GetFlagStatus()) followed by a write operation
+        // to I2C_CTLR1 register (I2C_Cmd() to re-enable the I2C peripheral).
+        // -> Since we just read the flag, we only need to (re-)enable.
+        I2C_Cmd(I2C1, ENABLE);
+    }
+}
+
+#define I2C_TIMEOUT (-2)
+#define I2C_TIMEOUT_TICK (1000)
+
+/**
+ * @brief  Read bytes from master using a timeout
+ * @param  data: pointer to data to be read
+ * @param  size: number of bytes to be write.
+ * @retval status
+ */
+static int i2c_slave_read(uint8_t *data, uint16_t size)
+{
+    uint8_t i = 0;
+    int ret = 0;
+    uint32_t tickstart = SysTick->CNT;
+
+    while (i < size)
+    {
+        if (I2C_GetFlagStatus(I2C1, I2C_FLAG_RXNE) != RESET)
+        {
+            data[i++] = I2C_ReceiveData(I2C1);
+        }
+        if ((SysTick->CNT - tickstart) >= I2C_TIMEOUT_TICK)
+        {
+            ret = I2C_TIMEOUT;
+            break;
+        }
+    }
+    return ret;
+}
+
+// MMOLE: added function to process I2C slave data transfers
+static void i2c_slave_process(void)
+{ // Process incoming and outgoing I2C data.
+    // When processing the data we can assume there is an address match.
+    // We could wait for an address match, but that would be blocking
+    // and isn't needed as RX/TX-flags are only set when addressed properly.
+
+    if (I2C_CheckEvent(I2C1, I2C_EVENT_SLAVE_TRANSMITTER_ADDRESS_MATCHED)) /* TRA, BUSY, TXE and ADDR flags */
+    {
+        PRINT("I2C_EVENT_SLAVE_TRANSMITTER_ADDRESS_MATCHED\r\n");
+    }
+
+    if (I2C_CheckEvent(I2C1, I2C_EVENT_SLAVE_RECEIVER_ADDRESS_MATCHED)) /* BUSY and ADDR flags */
+    {
+        PRINT("I2C_EVENT_SLAVE_RECEIVER_ADDRESS_MATCHED\r\n");
+    }
+
+    if (I2C_GetFlagStatus(I2C1, I2C_FLAG_ADDR) != RESET)
+    {
+        PRINT("I2C_FLAG_ADDR\r\n");
+    }
+
+    if (I2C_CheckEvent(I2C1, I2C_EVENT_SLAVE_BYTE_RECEIVED)) /* BUSY and RXNE flags */
+    {
+        PRINT("I2C_EVENT_SLAVE_BYTE_RECEIVED\r\n");
+    }
+
+    // Process receiving data
+    if (I2C_GetFlagStatus(I2C1, I2C_FLAG_RXNE) != RESET)
+    { // Data register not empty (Receiver) flag; read all available data and store it
+        I2C_REG_ptr = I2C_ReceiveData(I2C1);
+        PRINT("address %x\r\n", I2C_REG_ptr);
+        while (I2C_GetFlagStatus(I2C1, I2C_FLAG_RXNE) != RESET)
+        {
+            char c = I2C_ReceiveData(I2C1);
+            PRINT("received %x\r\n", c);
+            buffer[I2C_REG_ptr++] = c;
+        }
+    }
+
+    // Process end of receiving data, as determined by stop flag
+    if (I2C_CheckEvent(I2C1, I2C_EVENT_SLAVE_STOP_DETECTED))
+    { // When done receiving let's do the callback
+        // Note: twi.c::i2c_onSlaveReceive is tied to the TwoWire::onReceiveService().
+        PRINT("all data received\r\n");
+
+        // clear the stop flag to be ready for another session
+        I2C1_ClearStopFlag();
+    }
+
+    // Process transmitting data
+    if (I2C_GetFlagStatus(I2C1, I2C_FLAG_TXE) != RESET)
+    { // Data register empty flag (Transmitter).
+        // It seems we need to send something, give the callback opportunity to do so.
+        // Note: twi.c::i2c_onSlaveTransmit is tied to the TwoWire::onRequestService().
+        // The onRequest callback uses Wire.write(), which calls twi.c::i2c_slave_write(),
+        // which then calls I2C_SendData() and checks if done within timeout */
+        PRINT("sending\r\n");
+        I2C_SendData(I2C1, buffer[I2C_REG_ptr++]); // send register value to master
+    }
+
+    // just for debugging
+    if (I2C_CheckEvent(I2C1, I2C_EVENT_SLAVE_BYTE_TRANSMITTED))
+    {
+        PRINT("Master acked received byte (I2C_EVENT_SLAVE_BYTE_TRANSMITTED)\r\n");
+    }
+
+    if (I2C_CheckEvent(I2C1, I2C_EVENT_SLAVE_ACK_FAILURE))
+    {
+        PRINT("Master stopped receiving (I2C_EVENT_SLAVE_ACK_FAILURE)\r\n");
+    }
+
+    // Clear error flags (since we don't handle them anyways)
+    I2C1_ClearErrorFlags();
+}
+
+void I2C1_IRQHandler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
+void I2C1_IRQHandler(void)
+{
+    printf("I2C1_IRQHandler\r\n");
+}
+
+// Interrupt Service Routine for I2C1 Event
+void I2C1_EV_IRQHandler(void) __attribute__((interrupt));
+void I2C1_EV_IRQHandler(void)
+{
+    // see: https://github.com/cnlohr/ch32fun/blob/master/examples_x035/i2c_slave_test/i2c_slave_test.c
+    // see: https://github.com/Community-PIO-CH32V/ch32v003fun/blob/master/examples/i2c_slave/i2c_slave.h
+    // see: https://github.com/maxint-rd/arduino_core_ch32/blob/main/libraries/Wire/src/utility/twi.c
+
+    i2c_slave_process();
+}
+
+// Interrupt Service Routine for I2C1 Error
+void I2C1_ER_IRQHandler(void) __attribute__((interrupt));
+void I2C1_ER_IRQHandler(void)
+{
+    // do nothing here
 }
