@@ -1,65 +1,71 @@
 #include <ch32x035.h> /* both X033 and X035 */
-#include <stdio.h>
 #include <debug.h>
+#include <stdio.h>
 
 // analog pins (PA0-PA7, PB0-PB1, PC0-PC3 : 13 channels)
-#define BATTERY_MONITOR_PORT GPIOC // PC0: Battery Monitor
-#define BATTERY_MONITOR_PIN GPIO_Pin_0
+#define AIN1_PORT               GPIOA // PA0: Ain1
+#define AIN1_PIN                GPIO_Pin_0
+#define AIN1_CHANNEL            ADC_Channel_0
+#define AIN0_PORT               GPIOA // PA1: Ain0
+#define AIN0_PIN                GPIO_Pin_1
+#define AIN0_CHANNEL            ADC_Channel_1
+#define BATTERY_MONITOR_PORT    GPIOC // PC0: Battery Monitor
+#define BATTERY_MONITOR_PIN     GPIO_Pin_0
 #define BATTERY_MONITOR_CHANNEL ADC_Channel_9
-#define USB_MONITOR_PORT GPIOC // PC3: USB Monitor
-#define USB_MONITOR_PIN GPIO_Pin_0
-#define USB_MONITOR_CHANNEL ADC_Channel_12
-#define JOYSTICK_Y_PORT GPIOA // PA5: JoyY
-#define JOYSTICK_Y_PIN GPIO_Pin_5
-#define JOYSTICK_Y_CHANNEL ADC_Channel_4
-#define JOYSTICK_X_PORT GPIOA // PA6: JoyX
-#define JOYSTICK_X_PIN GPIO_Pin_6
-#define JOYSTICK_X_CHANNEL ADC_Channel_5
-#define ADC_CHANNELS (5) // 4 inputs + Vref
+#define USB_MONITOR_PORT        GPIOC // PC3: USB Monitor
+#define USB_MONITOR_PIN         GPIO_Pin_0
+#define USB_MONITOR_CHANNEL     ADC_Channel_12
+#define JOYSTICK_Y_PORT         GPIOA // PA5: JoyY
+#define JOYSTICK_Y_PIN          GPIO_Pin_5
+#define JOYSTICK_Y_CHANNEL      ADC_Channel_4
+#define JOYSTICK_X_PORT         GPIOA // PA6: JoyX
+#define JOYSTICK_X_PIN          GPIO_Pin_6
+#define JOYSTICK_X_CHANNEL      ADC_Channel_5
+#define ADC_CHANNELS            (7) // 6 inputs + Vref
 
 // digital inputs
 #define CHARGER_CHARGING_PORT GPIOA // PA2: Charger, charging
-#define CHARGER_CHARGING_PIN GPIO_Pin_2
-#define CHARGER_STANDBY_PORT GPIOA // PA3: Charger, standby
-#define CHARGER_STANDBY_PIN GPIO_Pin_3
-#define BUTTON_X_PORT GPIOB // PB7: X Button
-#define BUTTON_X_PIN GPIO_Pin_7
-#define BUTTON_A_PORT GPIOB // PB8: A Button
-#define BUTTON_A_PIN GPIO_Pin_8
-#define BUTTON_B_PORT GPIOB // PB9: B Button
-#define BUTTON_B_PIN GPIO_Pin_9
-#define BUTTON_Y_PORT GPIOB // PB10: Y Button
-#define BUTTON_Y_PIN GPIO_Pin_10
-#define BUTTON_MENU_PORT GPIOC // PC15: Menu Button
-#define BUTTON_MENU_PIN GPIO_Pin_15
+#define CHARGER_CHARGING_PIN  GPIO_Pin_2
+#define CHARGER_STANDBY_PORT  GPIOA // PA3: Charger, standby
+#define CHARGER_STANDBY_PIN   GPIO_Pin_3
+#define BUTTON_X_PORT         GPIOB // PB7: X Button
+#define BUTTON_X_PIN          GPIO_Pin_7
+#define BUTTON_A_PORT         GPIOB // PB8: A Button
+#define BUTTON_A_PIN          GPIO_Pin_8
+#define BUTTON_B_PORT         GPIOB // PB9: B Button
+#define BUTTON_B_PIN          GPIO_Pin_9
+#define BUTTON_Y_PORT         GPIOB // PB10: Y Button
+#define BUTTON_Y_PIN          GPIO_Pin_10
+#define BUTTON_MENU_PORT      GPIOC // PC15: Menu Button
+#define BUTTON_MENU_PIN       GPIO_Pin_15
 
 // digital outputs
-#define AUX_POWER_PORT GPIOB // PB6: Aux power
-#define AUX_POWER_PIN GPIO_Pin_6
-#define LCD_RESET_PORT GPIOB // PB11: LCD reset
-#define LCD_RESET_PIN GPIO_Pin_11
+#define AUX_POWER_PORT  GPIOB // PB6: Aux power
+#define AUX_POWER_PIN   GPIO_Pin_6
+#define LCD_RESET_PORT  GPIOB // PB11: LCD reset
+#define LCD_RESET_PIN   GPIO_Pin_11
 #define INT_OUTPUT_PORT GPIOC // PC16: Interrupt output
-#define INT_OUTPUT_PIN GPIO_Pin_16
+#define INT_OUTPUT_PIN  GPIO_Pin_16
 
 // PWM
-#define DEBUG_LED_PORT GPIOA // PA4: debug LED
-#define DEBUG_LED_PIN GPIO_Pin_4
-#define DEBUG_LED_TIM TIM3 // mapping 0b11
-#define DEBUG_LED_CHAN TIM_Channel_2
-#define BUZZER_PORT GPIOC // PC14: Buzzer
-#define BUZZER_PIN GPIO_Pin_14
-#define BUZZER_TIM TIM2 // mapping 0b11x
-#define BUZZER_CHAN TIM_Channel_2
+#define DEBUG_LED_PORT     GPIOA // PA4: debug LED
+#define DEBUG_LED_PIN      GPIO_Pin_4
+#define DEBUG_LED_TIM      TIM3 // mapping 0b11
+#define DEBUG_LED_CHAN     TIM_Channel_2
+#define BUZZER_PORT        GPIOC // PC14: Buzzer
+#define BUZZER_PIN         GPIO_Pin_14
+#define BUZZER_TIM         TIM2 // mapping 0b11x
+#define BUZZER_CHAN        TIM_Channel_2
 #define LCD_BACKLIGHT_PORT GPIOB // PB12: LCD BL
-#define LCD_BACKLIGHT_PIN GPIO_Pin_12
-#define LCD_BACKLIGHT_TIM TIM1 // mapping 0b010
+#define LCD_BACKLIGHT_PIN  GPIO_Pin_12
+#define LCD_BACKLIGHT_TIM  TIM1 // mapping 0b010
 #define LCD_BACKLIGHT_CHAN TIM_Channel_4
 
 // I2C
-#define SDA_PORT GPIOC
-#define SDA_PIN GPIO_Pin_18
-#define SCL_PORT GPIOC
-#define SCL_PIN GPIO_Pin_19
+#define SDA_PORT    GPIOC
+#define SDA_PIN     GPIO_Pin_18
+#define SCL_PORT    GPIOC
+#define SCL_PIN     GPIO_Pin_19
 #define I2C_ADDRESS (0x38)
 
 // static void Interrupt_setup()
@@ -274,79 +280,79 @@ static void PWM_Init(void)
     TIM_Cmd(TIM3, ENABLE);
 }
 
-static void ADC_Function_Init(void)
+static void ADC_MultiChannel_Init(void)
 {
-    ADC_InitTypeDef ADC_InitStructure = {0};
-    GPIO_InitTypeDef GPIO_InitStructure = {0};
+    // https://curiousscientist.tech/blog/ch32v003f4p6-adc-basics
+    ADC_InitTypeDef ADC_InitStructure;
+    GPIO_InitTypeDef GPIO_InitStructure;
 
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA | RCC_APB2Periph_GPIOC, ENABLE);
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_ADC1, ENABLE);
+    ADC_CLKConfig(ADC1, ADC_CLK_Div8); // TODO?
 
-    // Determines clock for ADC.
-    // At PCLK2 = 48MHz, ADCCLOCK = PCLK2 / 8 = 6MHz
-    // RCC_ADCCLKConfig(RCC_PCLK2_Div8);
-
-    GPIO_InitStructure.GPIO_Pin = BATTERY_MONITOR_PIN;
+    GPIO_InitStructure.GPIO_Pin = BATTERY_MONITOR_PIN | USB_MONITOR_PIN;
     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AIN;
-    GPIO_Init(BATTERY_MONITOR_PORT, &GPIO_InitStructure);
+    GPIO_Init(GPIOC, &GPIO_InitStructure);
 
-    GPIO_InitStructure.GPIO_Pin = USB_MONITOR_PIN;
+    GPIO_InitStructure.GPIO_Pin = JOYSTICK_X_PIN | JOYSTICK_Y_PIN | AIN0_PIN | AIN1_PIN;
     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AIN;
-    GPIO_Init(USB_MONITOR_PORT, &GPIO_InitStructure);
-
-    GPIO_InitStructure.GPIO_Pin = JOYSTICK_Y_PIN;
-    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AIN;
-    GPIO_Init(JOYSTICK_Y_PORT, &GPIO_InitStructure);
-
-    GPIO_InitStructure.GPIO_Pin = JOYSTICK_X_PIN;
-    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AIN;
-    GPIO_Init(JOYSTICK_X_PORT, &GPIO_InitStructure);
+    GPIO_Init(GPIOA, &GPIO_InitStructure);
 
     ADC_DeInit(ADC1);
+
     ADC_InitStructure.ADC_Mode = ADC_Mode_Independent;
-    ADC_InitStructure.ADC_ScanConvMode = DISABLE;
-    ADC_InitStructure.ADC_ContinuousConvMode = DISABLE;
+    ADC_InitStructure.ADC_ScanConvMode = ENABLE;
+    ADC_InitStructure.ADC_ContinuousConvMode = ENABLE;
     ADC_InitStructure.ADC_ExternalTrigConv = ADC_ExternalTrigConv_None;
     ADC_InitStructure.ADC_DataAlign = ADC_DataAlign_Right;
-    ADC_InitStructure.ADC_NbrOfChannel = 1;
+    ADC_InitStructure.ADC_NbrOfChannel = ADC_CHANNELS;
     ADC_Init(ADC1, &ADC_InitStructure);
 
+    // TODO: check sampletime
+    ADC_RegularChannelConfig(ADC1, BATTERY_MONITOR_CHANNEL, 1, ADC_SampleTime_4Cycles);
+    ADC_RegularChannelConfig(ADC1, USB_MONITOR_CHANNEL, 2, ADC_SampleTime_4Cycles);
+    ADC_RegularChannelConfig(ADC1, JOYSTICK_Y_CHANNEL, 3, ADC_SampleTime_11Cycles);
+    ADC_RegularChannelConfig(ADC1, JOYSTICK_X_CHANNEL, 4, ADC_SampleTime_11Cycles);
+    ADC_RegularChannelConfig(ADC1, AIN0_CHANNEL, 5, ADC_SampleTime_11Cycles);
+    ADC_RegularChannelConfig(ADC1, AIN1_CHANNEL, 6, ADC_SampleTime_11Cycles);
+    ADC_RegularChannelConfig(ADC1, ADC_Channel_Vrefint, 7, ADC_SampleTime_11Cycles);
+
+    // ADC_AnalogWatchdogThresholdsConfig(ADC1, );
+    ADC_AnalogWatchdogCmd(ADC1, ADC_AnalogWatchdog_AllRegEnable);
+
+    ADC_DMACmd(ADC1, ENABLE);
     ADC_Cmd(ADC1, ENABLE);
 
-    // ADC_BufferCmd(ADC1, ENABLE); // enable buffer
+    // TODO: set thresholds and enable the analog watchdog interrupt to use the joysticks as buttons
+    ADC_ITConfig(ADC1, ADC_IT_AWD, ENABLE);
+    NVIC_EnableIRQ(ADC1_IRQn);
 }
 
-static u16 Get_ADC_Val(u8 ch)
+static void DMA_Tx_Init(DMA_Channel_TypeDef *DMA_CHx, uint32_t peripheralAddress, uint32_t memoryAddress, uint16_t bufferSize)
 {
-    u16 val = 0;
-    ADC_RegularChannelConfig(ADC1, ch, 1, ADC_SampleTime_11Cycles); // or 7?
-    ADC_SoftwareStartConvCmd(ADC1, ENABLE);
-    while (!ADC_GetFlagStatus(ADC1, ADC_FLAG_EOC))
-        ;
-    val = ADC_GetConversionValue(ADC1);
-    return val;
+    DMA_InitTypeDef DMA_InitStructure = {0};
+
+    RCC_AHBPeriphClockCmd(RCC_AHBPeriph_DMA1, ENABLE);
+
+    DMA_DeInit(DMA_CHx);
+    DMA_InitStructure.DMA_PeripheralBaseAddr = peripheralAddress;
+    DMA_InitStructure.DMA_MemoryBaseAddr = memoryAddress;
+    DMA_InitStructure.DMA_DIR = DMA_DIR_PeripheralSRC;
+    DMA_InitStructure.DMA_BufferSize = bufferSize;
+    DMA_InitStructure.DMA_PeripheralInc = DMA_PeripheralInc_Disable;
+    DMA_InitStructure.DMA_MemoryInc = DMA_MemoryInc_Enable;
+    DMA_InitStructure.DMA_PeripheralDataSize = DMA_PeripheralDataSize_HalfWord;
+    DMA_InitStructure.DMA_MemoryDataSize = DMA_MemoryDataSize_HalfWord;
+    DMA_InitStructure.DMA_Mode = DMA_Mode_Circular;
+    DMA_InitStructure.DMA_Priority = DMA_Priority_VeryHigh;
+    DMA_InitStructure.DMA_M2M = DMA_M2M_Disable;
+    DMA_Init(DMA_CHx, &DMA_InitStructure);
 }
 
-static u16 Get_ADC_Average(u8 ch, u8 times)
-{
-    u32 temp_val = 0;
-    u8 t;
-    u16 val;
-
-    for (t = 0; t < times; t++)
-    {
-        temp_val += Get_ADC_Val(ch);
-        Delay_Ms(5);
-    }
-
-    val = temp_val / times;
-
-    return val;
-}
-
+/* main */
 int main(void)
 {
-    u16 ADC_val;
+    u16 ADCBuffer[ADC_CHANNELS];
 
 #ifdef NVIC_PriorityGroup_2
     NVIC_PriorityGroupConfig(NVIC_PriorityGroup_2);
@@ -357,34 +363,51 @@ int main(void)
     Delay_Init();
     Uart_Init();
 
+    /* makes sure that we can still flash using SWD */
     Delay_Ms(1000); // give serial monitor time to open
 
-    printf("SystemClk: %u\r\n", (unsigned)SystemCoreClock);
-    printf("ChipID: %08x\r\n", (unsigned)DBGMCU_GetCHIPID());
+    PRINT("SystemClk: %u\r\n", (unsigned)SystemCoreClock);
+    PRINT("ChipID: %08x\r\n", (unsigned)DBGMCU_GetCHIPID());
 
     Gpio_Init();
     IIC_Init(); // maps SWD lines to I2C
     PWM_Init();
-    ADC_Function_Init();
+    // ADC_Function_Init();
+    ADC_MultiChannel_Init();
+    DMA_Tx_Init(DMA1_Channel1, (u32)&ADC1->RDATAR, (u32)ADCBuffer, ADC_CHANNELS);
+    DMA_Cmd(DMA1_Channel1, ENABLE);
+    ADC_SoftwareStartConvCmd(ADC1, ENABLE);
 
-    printf("Init done\r\n");
+    PRINT("Init done\r\n");
 
-    uint8_t ledState = 0;
     while (1)
     {
-        ADC_val = Get_ADC_Average(ADC_CHANNEL_TO_USE, 10);
-        printf("ADC val: %d\r\n", ADC_val);
-        // GPIO_WriteBit(DEBUG_LED_GPIO_PORT, DEBUG_LED_GPIO_PIN, ledState);
-        ledState ^= 1; // invert for the next run
-        Delay_Ms(1000);
+        __WFI(); // Wait for Interrupt (low power mode)
+    }
+}
+
+/* interrupt handlers */
+
+void ADC1_IRQHandler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
+void ADC1_IRQHandler(void)
+{
+    if (ADC_GetITStatus(ADC1, ADC_IT_AWD) != RESET)
+    {
+        PRINT("Analog watchdog triggered\r\n");
+        ADC_ClearITPendingBit(ADC1, ADC_IT_AWD);
     }
 }
 
 void NMI_Handler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
-void NMI_Handler(void) {}
+void NMI_Handler(void)
+{
+    PRINT("NMI_Handler\r\n");
+}
+
 void HardFault_Handler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
 void HardFault_Handler(void)
 {
+    PRINT("HARDFAULT\r\n");
     while (1)
     {
     }
@@ -395,7 +418,7 @@ void EXTI7_0_IRQHandler(void)
 {
     if (EXTI_GetITStatus(EXTI_Line0) != RESET)
     {
-        printf("interrupt\r\n");
+        PRINT("interrupt\r\n");
         inputChanged = 1; // Setting a flag instead of printing directly from the ISR()
         // read all inputs?
         EXTI_ClearITPendingBit(EXTI_Line0); // Clearing ISR flag
@@ -427,8 +450,17 @@ static void I2C1_ClearStopFlag(void)
     }
 }
 
-#define I2C_TIMEOUT (-2)
+#define I2C_TIMEOUT      (-2)
 #define I2C_TIMEOUT_TICK (1000)
+
+static uint I2C_REG_ptr = 0;
+static uint8_t test_buffer[] = {
+    0x01,
+    0x02,
+    0x03,
+    0x04,
+    0x05,
+};
 
 /**
  * @brief  Read bytes from master using a timeout
@@ -493,7 +525,7 @@ static void i2c_slave_process(void)
         {
             char c = I2C_ReceiveData(I2C1);
             PRINT("received %x\r\n", c);
-            buffer[I2C_REG_ptr++] = c;
+            test_buffer[I2C_REG_ptr++] = c;
         }
     }
 
@@ -515,7 +547,7 @@ static void i2c_slave_process(void)
         // The onRequest callback uses Wire.write(), which calls twi.c::i2c_slave_write(),
         // which then calls I2C_SendData() and checks if done within timeout */
         PRINT("sending\r\n");
-        I2C_SendData(I2C1, buffer[I2C_REG_ptr++]); // send register value to master
+        I2C_SendData(I2C1, test_buffer[I2C_REG_ptr++]); // send register value to master
     }
 
     // just for debugging
@@ -536,7 +568,7 @@ static void i2c_slave_process(void)
 void I2C1_IRQHandler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
 void I2C1_IRQHandler(void)
 {
-    printf("I2C1_IRQHandler\r\n");
+    PRINT("I2C1_IRQHandler\r\n");
 }
 
 // Interrupt Service Routine for I2C1 Event
