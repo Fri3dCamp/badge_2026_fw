@@ -19,14 +19,14 @@
 #define BATTERY_MONITOR_RANK    (3)
 #define USB_MONITOR_PORT        GPIOC // PC3: USB Monitor
 #define USB_MONITOR_PIN         GPIO_Pin_0
-#define USB_MONITOR_CHANNEL     ADC_Channel_12
+#define USB_MONITOR_CHANNEL     ADC_Channel_13 // TODO: or 10?
 #define USB_MONITOR_RANK        (4)
-#define JOYSTICK_Y_PORT         GPIOA // PA5: JoyY
-#define JOYSTICK_Y_PIN          GPIO_Pin_5
-#define JOYSTICK_Y_CHANNEL      ADC_Channel_4
+#define JOYSTICK_Y_PORT         GPIOA // PA6: JoyY
+#define JOYSTICK_Y_PIN          GPIO_Pin_6
+#define JOYSTICK_Y_CHANNEL      ADC_Channel_6
 #define JOYSTICK_Y_RANK         (5)
-#define JOYSTICK_X_PORT         GPIOA // PA6: JoyX
-#define JOYSTICK_X_PIN          GPIO_Pin_6
+#define JOYSTICK_X_PORT         GPIOA // PA5: JoyX
+#define JOYSTICK_X_PIN          GPIO_Pin_5
 #define JOYSTICK_X_CHANNEL      ADC_Channel_5
 #define JOYSTICK_X_RANK         (6)
 #define ADC_CHANNELS            (6)
@@ -82,7 +82,7 @@
 #define USB_VOLTAGE_THRESHOLD     (3000) /* (5V/2 / 3.3) * 4095 = 3100, we consider everything above 3000 as "USB connected" */
 
 // TODO: is this pulse width enough?
-#define INT_PULSE_TICKS ((SystemCoreClock / 1000000)) /* one microsecond pulse */
+#define INT_PULSE_TICKS (SystemCoreClock-1) /* one second*/
 
 #define RESULT_BUFFER_SIZE (3 + 2 + (ADC_CHANNELS * 2) + 1 + 1 + 1 + 1)
 #define OUTPUTS_OFFSET     (3 + 2 + (ADC_CHANNELS * 2))
@@ -129,9 +129,9 @@ typedef struct
     uint8_t flag_update_buzzer : 1;    // flag to indicate that the buzzer PWM value should be updated
     uint8_t flag_update_outputs : 1;   // flag to indicate that the outputs should be updated
     uint8_t flag_button_scan_done : 1; // flag to indicate that the state of one of the buttons has changed
-    uint8_t reserved : 4;              // reserved for future use
+    uint8_t flag_clear_int : 1;         // flag to indicate that the interrupt towards the ESP32 can be cleared
+    uint8_t reserved : 3;              // reserved for future use
     uint8_t raw_data_ptr;              // current index in the raw_data buffer to read/write using I2C
-    uint64_t flag_last_int_set;
     union
     {
         addon_data_t data;
@@ -140,6 +140,17 @@ typedef struct
 } addon_state_t;
 
 static addon_state_t state;
+
+static void SysTick_Init(void)
+{
+    SysTick->SR = 0;
+    SysTick->CNT = 0;
+    SysTick->CMP = INT_PULSE_TICKS;
+    SysTick->CTLR = 0xF;
+
+    NVIC_SetPriority(SysTick_IRQn, 15);
+    NVIC_EnableIRQ(SysTick_IRQn);
+}
 
 static void Outputs_Init(void)
 {
@@ -188,7 +199,7 @@ static void Button_Init(uint16_t arr, uint16_t psc)
 
     /* configure GPIO as inputs */
     GPIO_InitStructure.GPIO_Pin = CHARGER_CHARGING_PIN | CHARGER_STANDBY_PIN;
-    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN_FLOATING;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPD;
     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
     GPIO_Init(GPIOA, &GPIO_InitStructure);
 
@@ -751,11 +762,11 @@ static buttons_t read_buttons(void)
     }
     if (joy_x > JOYSTICK_THRESHOLD_TOP)
     {
-        res.joy_left = 1;
+        res.joy_right = 1;
     }
     if (joy_x < JOYSTICK_THRESHOLD_BOTTOM)
     {
-        res.joy_right = 1;
+        res.joy_left = 1;
     }
     if (usb_voltage > USB_VOLTAGE_THRESHOLD)
     {
@@ -803,11 +814,12 @@ static void Button_Scan(void)
 
 static void set_int_output(BitAction BitVal)
 {
-    GPIO_WriteBit(DEBUG_LED_PORT, DEBUG_LED_PIN, BitVal);
-    GPIO_WriteBit(DEBUG_LED_PORT, DEBUG_LED_PIN, BitVal);
+    GPIO_WriteBit(DEBUG_LED_PORT, DEBUG_LED_PIN, BitVal == Bit_RESET ? Bit_SET : Bit_RESET);
+    GPIO_WriteBit(INT_OUTPUT_PORT, INT_OUTPUT_PIN, BitVal);
     if (BitVal != Bit_RESET)
     {
-        state.flag_last_int_set = SysTick->CNT;
+        SysTick->CNT = 0;
+        state.flag_clear_int = 0;
     }
 }
 
@@ -855,6 +867,8 @@ int main(void)
     DMA_Cmd(DMA1_Channel1, ENABLE);
     ADC_SoftwareStartConvCmd(ADC1, ENABLE);
 
+    SysTick_Init();
+
     /* enable AUX power and unset the LCD reset pin */
     state.data.aux_power = 1;
     state.data.lcd_reset = 0;
@@ -876,8 +890,14 @@ int main(void)
 
     while (1)
     {
+        if (state.flag_button_scan_done)
+        {
+            state.flag_button_scan_done = 0;
+            set_int_output(Bit_SET);
+        }
+
         /* check if the interrupt output pin can be reset */
-        if (SysTick->CNT - state.flag_last_int_set > INT_PULSE_TICKS)
+        if (state.flag_clear_int)
         {
             set_int_output(Bit_RESET);
         }
@@ -965,4 +985,11 @@ void I2C1_ER_IRQHandler(void) __attribute__((interrupt));
 void I2C1_ER_IRQHandler(void)
 {
     // do nothing here
+}
+
+void SysTick_Handler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
+void SysTick_Handler(void)
+{
+    SysTick->SR = 0;
+    state.flag_clear_int = 1;
 }
