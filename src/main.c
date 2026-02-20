@@ -823,6 +823,11 @@ static void set_int_output(BitAction BitVal)
     }
 }
 
+static void reset_to_bootloader(void) {
+    SystemReset_StartMode(Start_Mode_BOOT);
+    NVIC_SystemReset();
+}
+
 /* main */
 int main(void)
 {
@@ -894,6 +899,14 @@ int main(void)
         {
             state.flag_button_scan_done = 0;
             set_int_output(Bit_SET);
+            if (state.data.inputs.button_menu) {
+                PRINT("Menu button pressed, rebooting to bootloader in 10 seconds\r\n");
+                Delay_Ms(10000);
+                PRINT("rebooting\r\n");
+                Delay_Ms(100);
+                reset_to_bootloader();
+                while(1);
+            }
         }
 
         /* check if the interrupt output pin can be reset */
