@@ -584,7 +584,10 @@ static void I2C1_ClearStopFlag(void)
     }
 }
 
-
+static void reset_to_bootloader(void) {
+    SystemReset_StartMode(Start_Mode_BOOT);
+    NVIC_SystemReset();
+}
 
 /* function to process I2C slave data transfers */
 /* reference: arduino implementation */
@@ -654,6 +657,8 @@ static void i2c_slave_process(void)
             {
                 // TODO: do a reboot here and trigger bootloader?
                 PRINT("ERROR: trying to write 0x%x outside of result buffer: 0x%x\r\n", c, state.raw_data_ptr);
+                PRINT("triggering boot to bootloader\r\n");
+                reset_to_bootloader();
             }
         }
     }
@@ -823,11 +828,6 @@ static void set_int_output(BitAction BitVal)
     }
 }
 
-static void reset_to_bootloader(void) {
-    SystemReset_StartMode(Start_Mode_BOOT);
-    NVIC_SystemReset();
-}
-
 /* main */
 int main(void)
 {
@@ -989,7 +989,6 @@ void I2C1_EV_IRQHandler(void)
     // see: https://github.com/cnlohr/ch32fun/blob/master/examples_x035/i2c_slave_test/i2c_slave_test.c
     // see: https://github.com/Community-PIO-CH32V/ch32v003fun/blob/master/examples/i2c_slave/i2c_slave.h
     // see: https://github.com/maxint-rd/arduino_core_ch32/blob/main/libraries/Wire/src/utility/twi.c
-
     i2c_slave_process();
 }
 
