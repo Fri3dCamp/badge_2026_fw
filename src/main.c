@@ -82,7 +82,7 @@
 #define USB_VOLTAGE_THRESHOLD     (3000) /* (5V/2 / 3.3) * 4095 = 3100, we consider everything above 3000 as "USB connected" */
 
 // TODO: is this pulse width enough?
-#define INT_PULSE_TICKS (SystemCoreClock-1) /* one second*/
+#define INT_PULSE_TICKS (SystemCoreClock - 1) /* one second*/
 
 #define RESULT_BUFFER_SIZE (3 + 2 + (ADC_CHANNELS * 2) + 1 + 1 + 1 + 1)
 #define OUTPUTS_OFFSET     (3 + 2 + (ADC_CHANNELS * 2))
@@ -129,7 +129,7 @@ typedef struct
     uint8_t flag_update_buzzer : 1;    // flag to indicate that the buzzer PWM value should be updated
     uint8_t flag_update_outputs : 1;   // flag to indicate that the outputs should be updated
     uint8_t flag_button_scan_done : 1; // flag to indicate that the state of one of the buttons has changed
-    uint8_t flag_clear_int : 1;         // flag to indicate that the interrupt towards the ESP32 can be cleared
+    uint8_t flag_clear_int : 1;        // flag to indicate that the interrupt towards the ESP32 can be cleared
     uint8_t reserved : 3;              // reserved for future use
     uint8_t raw_data_ptr;              // current index in the raw_data buffer to read/write using I2C
     union
@@ -584,7 +584,8 @@ static void I2C1_ClearStopFlag(void)
     }
 }
 
-static void reset_to_bootloader(void) {
+static void reset_to_bootloader(void)
+{
     SystemReset_StartMode(Start_Mode_BOOT);
     NVIC_SystemReset();
 }
@@ -899,13 +900,15 @@ int main(void)
         {
             state.flag_button_scan_done = 0;
             set_int_output(Bit_SET);
-            if (state.data.inputs.button_menu) {
+            if (state.data.inputs.button_menu)
+            {
                 PRINT("Menu button pressed, rebooting to bootloader in 10 seconds\r\n");
                 Delay_Ms(10000);
                 PRINT("rebooting\r\n");
                 Delay_Ms(100);
                 reset_to_bootloader();
-                while(1);
+                while (1)
+                    ;
             }
         }
 
