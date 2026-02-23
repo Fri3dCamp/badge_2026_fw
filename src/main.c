@@ -15,10 +15,10 @@
 #define AIN0_RANK               (2)
 #define BATTERY_MONITOR_PORT    GPIOC // PC0: Battery Monitor
 #define BATTERY_MONITOR_PIN     GPIO_Pin_0
-#define BATTERY_MONITOR_CHANNEL ADC_Channel_9
+#define BATTERY_MONITOR_CHANNEL ADC_Channel_10
 #define BATTERY_MONITOR_RANK    (3)
 #define USB_MONITOR_PORT        GPIOC // PC3: USB Monitor
-#define USB_MONITOR_PIN         GPIO_Pin_0
+#define USB_MONITOR_PIN         GPIO_Pin_3
 #define USB_MONITOR_CHANNEL     ADC_Channel_13 // TODO: or 10?
 #define USB_MONITOR_RANK        (4)
 #define JOYSTICK_Y_PORT         GPIOA // PA6: JoyY
@@ -198,8 +198,13 @@ static void Button_Init(uint16_t arr, uint16_t psc)
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO | RCC_APB2Periph_GPIOA | RCC_APB2Periph_GPIOB | RCC_APB2Periph_GPIOC, ENABLE);
 
     /* configure GPIO as inputs */
-    GPIO_InitStructure.GPIO_Pin = CHARGER_CHARGING_PIN | CHARGER_STANDBY_PIN;
-    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPD;
+    GPIO_InitStructure.GPIO_Pin = CHARGER_CHARGING_PIN;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
+    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+    GPIO_Init(GPIOA, &GPIO_InitStructure);
+
+    GPIO_InitStructure.GPIO_Pin = CHARGER_STANDBY_PIN;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN_FLOATING; // TODO: what should these be?
     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
     GPIO_Init(GPIOA, &GPIO_InitStructure);
 
@@ -864,15 +869,12 @@ int main(void)
     Outputs_Init();
 
     /* configure the button debounce timer */
-    Button_Init(1, SystemCoreClock / 10000 - 1);
-    Buzzer_PWM_Init(480 - 1, 100, 75);
-    LCD_PWM_Init(480 - 1, 100, 75);
     /* configure the analog input reading */
     ADC_MultiChannel_Init();
     DMA_Tx_Init(DMA1_Channel1, (u32)&ADC1->RDATAR, (u32)state.data.adc_channels, ADC_CHANNELS);
     DMA_Cmd(DMA1_Channel1, ENABLE);
     ADC_SoftwareStartConvCmd(ADC1, ENABLE);
-
+    Button_Init(1, SystemCoreClock / 10000 - 1);
     SysTick_Init();
 
     /* enable AUX power and unset the LCD reset pin */
@@ -882,12 +884,7 @@ int main(void)
 
     /* Turn on the LCD backlight */
     // TODO: set the PWM to 100% or 50%?
-    state.data.lcd_brightness = 0xFF >> 1;
-    state.flag_update_lcd = 1;
 
-    /* turn on the buzzer at boot */
-    state.data.buzzer = 0xff >> 1;
-    state.flag_update_buzzer = 1;
 
     /* set the interrupt output pin */
     set_int_output(Bit_SET);
@@ -925,17 +922,6 @@ int main(void)
             GPIO_WriteBit(LCD_RESET_PORT, LCD_RESET_PIN, state.data.lcd_reset ? Bit_SET : Bit_RESET);
         }
 
-        if (state.flag_update_lcd)
-        {
-            state.flag_update_lcd = 0;
-            PWM_Init(LCD_BACKLIGHT_TIM, 480 - 1, 100, 75);
-        }
-
-        if (state.flag_update_buzzer)
-        {
-            state.flag_update_buzzer = 0;
-            PWM_Init(BUZZER_TIM, 480 - 1, 100, 75);
-        }
     }
 }
 
