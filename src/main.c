@@ -84,12 +84,11 @@
 // TODO: is this pulse width enough?
 #define INT_PULSE_TICKS (SystemCoreClock - 1) /* one second*/
 
-#define RESULT_BUFFER_SIZE (3 + 2 + (ADC_CHANNELS * 2) + 1 + 1 + 1 + 1)
-#define OUTPUTS_OFFSET     (3 + 2 + (ADC_CHANNELS * 2))
+#define BUTTON_SIZE        (2)
+#define RESULT_BUFFER_SIZE (3 + 1 + BUTTON_SIZE + (ADC_CHANNELS * 2) + 1 + 1 + 1)
+#define OUTPUTS_OFFSET     (3 + 1 + BUTTON_SIZE + (ADC_CHANNELS * 2))
 #define PWM_LCD_OFFSET     (OUTPUTS_OFFSET + 1)
 #define PWM_BUZZER_OFFSET  (PWM_LCD_OFFSET + 1)
-
-#define BUTTON_SIZE (2)
 
 typedef struct
 {
@@ -111,11 +110,12 @@ typedef struct
 /*
  * This struct contains all data that is available through I2C.
  */
-typedef struct
+typedef struct __attribute__((packed))
 {
-    uint8_t version[3];
-    buttons_t inputs;
-    uint16_t adc_channels[ADC_CHANNELS]; /* current value for all ADC channels */
+    uint8_t version[3];                  /* version number */
+    uint8_t unused;                      /* this byte is important to 4 byte align the ADC channels buffer */
+    buttons_t inputs;                    /* buttons state */
+    uint16_t adc_channels[ADC_CHANNELS]; /* current value for all ADC channels THIS LOCATION NEED TO BE 4 BYTE ALIGNED! */
     uint8_t aux_power : 1;               /* set aux power on/off */
     uint8_t lcd_reset : 1;               /* reset LCD */
     uint8_t output_reserved : 6;         /**/
@@ -139,6 +139,7 @@ typedef struct
     };
 } addon_state_t;
 
+/* global state variable */
 static addon_state_t state;
 
 static void SysTick_Init(void)
