@@ -15,10 +15,10 @@
 #define AIN0_RANK               (2)
 #define BATTERY_MONITOR_PORT    GPIOC // PC0: Battery Monitor
 #define BATTERY_MONITOR_PIN     GPIO_Pin_0
-#define BATTERY_MONITOR_CHANNEL ADC_Channel_9
+#define BATTERY_MONITOR_CHANNEL ADC_Channel_10
 #define BATTERY_MONITOR_RANK    (3)
 #define USB_MONITOR_PORT        GPIOC // PC3: USB Monitor
-#define USB_MONITOR_PIN         GPIO_Pin_0
+#define USB_MONITOR_PIN         GPIO_Pin_3
 #define USB_MONITOR_CHANNEL     ADC_Channel_13 // TODO: or 10?
 #define USB_MONITOR_RANK        (4)
 #define JOYSTICK_Y_PORT         GPIOA // PA6: JoyY
@@ -82,14 +82,13 @@
 #define USB_VOLTAGE_THRESHOLD     (3000) /* (5V/2 / 3.3) * 4095 = 3100, we consider everything above 3000 as "USB connected" */
 
 // TODO: is this pulse width enough?
-#define INT_PULSE_TICKS (SystemCoreClock-1) /* one second*/
+#define INT_PULSE_TICKS (SystemCoreClock - 1) /* one second*/
 
-#define RESULT_BUFFER_SIZE (3 + 2 + (ADC_CHANNELS * 2) + 1 + 1 + 1 + 1)
-#define OUTPUTS_OFFSET     (3 + 2 + (ADC_CHANNELS * 2))
+#define BUTTON_SIZE        (2)
+#define RESULT_BUFFER_SIZE (3 + 1 + BUTTON_SIZE + (ADC_CHANNELS * 2) + 1 + 1 + 1)
+#define OUTPUTS_OFFSET     (3 + 1 + BUTTON_SIZE + (ADC_CHANNELS * 2))
 #define PWM_LCD_OFFSET     (OUTPUTS_OFFSET + 1)
 #define PWM_BUZZER_OFFSET  (PWM_LCD_OFFSET + 1)
-
-#define BUTTON_SIZE (2)
 
 typedef struct
 {
@@ -111,11 +110,12 @@ typedef struct
 /*
  * This struct contains all data that is available through I2C.
  */
-typedef struct
+typedef struct __attribute__((packed))
 {
-    uint8_t version[3];
-    buttons_t inputs;
-    uint16_t adc_channels[ADC_CHANNELS]; /* current value for all ADC channels */
+    uint8_t version[3];                  /* version number */
+    uint8_t unused;                      /* this byte is important to 4 byte align the ADC channels buffer */
+    buttons_t inputs;                    /* buttons state */
+    uint16_t adc_channels[ADC_CHANNELS]; /* current value for all ADC channels THIS LOCATION NEED TO BE 4 BYTE ALIGNED! */
     uint8_t aux_power : 1;               /* set aux power on/off */
     uint8_t lcd_reset : 1;               /* reset LCD */
     uint8_t output_reserved : 6;         /**/
@@ -129,7 +129,7 @@ typedef struct
     uint8_t flag_update_buzzer : 1;    // flag to indicate that the buzzer PWM value should be updated
     uint8_t flag_update_outputs : 1;   // flag to indicate that the outputs should be updated
     uint8_t flag_button_scan_done : 1; // flag to indicate that the state of one of the buttons has changed
-    uint8_t flag_clear_int : 1;         // flag to indicate that the interrupt towards the ESP32 can be cleared
+    uint8_t flag_clear_int : 1;        // flag to indicate that the interrupt towards the ESP32 can be cleared
     uint8_t reserved : 3;              // reserved for future use
     uint8_t raw_data_ptr;              // current index in the raw_data buffer to read/write using I2C
     union
@@ -139,6 +139,7 @@ typedef struct
     };
 } addon_state_t;
 
+/* global state variable */
 static addon_state_t state;
 
 static void SysTick_Init(void)
@@ -589,7 +590,11 @@ static void I2C1_ClearStopFlag(void)
     }
 }
 
-
+static void reset_to_bootloader(void)
+{
+    SystemReset_StartMode(Start_Mode_BOOT);
+    NVIC_SystemReset();
+}
 
 /* function to process I2C slave data transfers */
 /* reference: arduino implementation */
@@ -659,6 +664,8 @@ static void i2c_slave_process(void)
             {
                 // TODO: do a reboot here and trigger bootloader?
                 PRINT("ERROR: trying to write 0x%x outside of result buffer: 0x%x\r\n", c, state.raw_data_ptr);
+                PRINT("triggering boot to bootloader\r\n");
+                reset_to_bootloader();
             }
         }
     }
@@ -828,11 +835,6 @@ static void set_int_output(BitAction BitVal)
     }
 }
 
-static void reset_to_bootloader(void) {
-    SystemReset_StartMode(Start_Mode_BOOT);
-    NVIC_SystemReset();
-}
-
 /* main */
 int main(void)
 {
@@ -868,15 +870,12 @@ int main(void)
     Outputs_Init();
 
     /* configure the button debounce timer */
-    Button_Init(1, SystemCoreClock / 10000 - 1);
-    Buzzer_PWM_Init(480 - 1, 100, 75);
-    LCD_PWM_Init(480 - 1, 100, 75);
     /* configure the analog input reading */
     ADC_MultiChannel_Init();
     DMA_Tx_Init(DMA1_Channel1, (u32)&ADC1->RDATAR, (u32)state.data.adc_channels, ADC_CHANNELS);
     DMA_Cmd(DMA1_Channel1, ENABLE);
     ADC_SoftwareStartConvCmd(ADC1, ENABLE);
-
+    Button_Init(1, SystemCoreClock / 10000 - 1);
     SysTick_Init();
 
     /* enable AUX power and unset the LCD reset pin */
@@ -886,12 +885,7 @@ int main(void)
 
     /* Turn on the LCD backlight */
     // TODO: set the PWM to 100% or 50%?
-    state.data.lcd_brightness = 0xFF >> 1;
-    state.flag_update_lcd = 1;
 
-    /* turn on the buzzer at boot */
-    state.data.buzzer = 0xff >> 1;
-    state.flag_update_buzzer = 1;
 
     /* set the interrupt output pin */
     set_int_output(Bit_SET);
@@ -904,13 +898,15 @@ int main(void)
         {
             state.flag_button_scan_done = 0;
             set_int_output(Bit_SET);
-            if (state.data.inputs.button_menu) {
+            if (state.data.inputs.button_menu)
+            {
                 PRINT("Menu button pressed, rebooting to bootloader in 10 seconds\r\n");
                 Delay_Ms(10000);
                 PRINT("rebooting\r\n");
                 Delay_Ms(100);
                 reset_to_bootloader();
-                while(1);
+                while (1)
+                    ;
             }
         }
 
@@ -927,17 +923,6 @@ int main(void)
             GPIO_WriteBit(LCD_RESET_PORT, LCD_RESET_PIN, state.data.lcd_reset ? Bit_SET : Bit_RESET);
         }
 
-        if (state.flag_update_lcd)
-        {
-            state.flag_update_lcd = 0;
-            PWM_Init(LCD_BACKLIGHT_TIM, 480 - 1, 100, 75);
-        }
-
-        if (state.flag_update_buzzer)
-        {
-            state.flag_update_buzzer = 0;
-            PWM_Init(BUZZER_TIM, 480 - 1, 100, 75);
-        }
     }
 }
 
@@ -994,7 +979,6 @@ void I2C1_EV_IRQHandler(void)
     // see: https://github.com/cnlohr/ch32fun/blob/master/examples_x035/i2c_slave_test/i2c_slave_test.c
     // see: https://github.com/Community-PIO-CH32V/ch32v003fun/blob/master/examples/i2c_slave/i2c_slave.h
     // see: https://github.com/maxint-rd/arduino_core_ch32/blob/main/libraries/Wire/src/utility/twi.c
-
     i2c_slave_process();
 }
 
