@@ -364,132 +364,6 @@ static void Buzzer_PWM_Init(uint16_t PRSC, uint16_t ARR, uint16_t CCR)
     PWM_Init(BUZZER_TIM, PRSC, ARR, CCR);
 }
 
-// static void Buzzer_PWM_Init(void)
-// {
-//     DMA_InitTypeDef DMA_InitStructure = {0};
-
-//     // Enable GPIOC and Timer 1
-//     RCC_APB2PeriphClockCmd(CC_APB2Periph_TIM1 | RCC_APB2Periph_AFIO | RCC_APB2Periph_GPIOC, ENABLE);
-//     // Enable DMA
-//     RCC_AHBPeriphClockCmd(RCC_AHBPeriph_SRAM | RCC_AHBPeriph_DMA1, ENABLE);
-
-//     // PC3 is TIM1 CH3
-//     GPIO_InitStructure.GPIO_Pin = BUZZER_PIN;
-//     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;
-//     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_10MHz;
-//     GPIO_Init(BUZZER_PORT, &GPIO_InitStructure);
-
-//     DMA_DeInit(DMA1_Channel1);
-//     DMA_InitStructure.DMA_PeripheralBaseAddr = (uint32_t)&TIM1->CH3CVR; // This is T1CH2 Compare Register.
-//     DMA_InitStructure.DMA_MemoryBaseAddr = (uint32_t)s_buffer;
-//     DMA_InitStructure.DMA_DIR = DMA_DIR_PeripheralDST; // MEM2PERIPHERAL
-//     DMA_InitStructure.DMA_BufferSize = SAMPLES * 2;    // Number of samples to transfer;
-//     DMA_InitStructure.DMA_PeripheralInc = DMA_PeripheralInc_Disable;
-//     DMA_InitStructure.DMA_MemoryInc = DMA_MemoryInc_Enable;                 // Increase memory.
-//     DMA_InitStructure.DMA_PeripheralDataSize = DMA_PeripheralDataSize_Word; // 32-bit peripheral
-//     DMA_InitStructure.DMA_MemoryDataSize = DMA_MemoryDataSize_HalfWord;     // 16-bit memory
-//     DMA_InitStructure.DMA_Mode = DMA_Mode_Circular;                         // Circular mode.
-//     DMA_InitStructure.DMA_Priority = DMA_Priority_High;                     // High priority.
-//     DMA_InitStructure.DMA_M2M = DMA_M2M_Disable;
-//     DMA_Init(DMA1_Channel1, &DMA_InitStructure);
-
-//     // configure interrupts
-//     DMA_ITConfig(DMA1_Channel1, DMA_IT_HT | DMA_IT_TC, ENABLE); // Half-trigger, Whole-trigger
-
-//     // Enable interrupts
-//     NVIC_EnableIRQ(DMA_IRQn);
-
-//     // Enable
-//     DMA_Cmd(DMA1_Channel1, ENABLE);
-
-//     // Reset TIM1 to init all regs
-//     RCC_APB2PeriphResetCmd(RCC_APB2Periph_TIM1, ENABLE);
-//     RCC_APB2PeriphResetCmd(RCC_APB2Periph_TIM1, DISABLE);
-
-//     // CTLR1: default is up, events generated, edge align
-//     // SMCFGR: default clk input is CK_INT
-
-//     TIM_TimeBaseInitTypeDef TIM_InitStructure = {0};
-//     TIM_InitStructure.TIM_Period = FREQ_TO_TICKS(SAMPLE_RATE); // Auto Reload - sets period
-//     TIM_InitStructure.TIM_Prescaler = 0;                       // No prescaler, TIM1 clock is 48 MHz
-
-//     TIM_TimeBaseInit(TIM1, &TIM_InitStructure);
-
-//     // TODO
-//     TIM_PrescalerConfig(TIM1, 0, TIM_PSCReloadMode_Immediate | TIM_PSCReloadMode_Update | TIM_EventSource_Trigger | TIM_EventSource_Update); // Update and trigger DMA
-
-//     TIM_OCInitTypeDef TIM_OCInitStruct = {0};
-//     TIM_OCStructInit(&TIM_OCInitStruct);
-
-//     TIM_OCInitStruct.TIM_OC1Init(TIM1, TIM_OCNPolarity);
-
-//     // Trigger DMA on update event
-//     TIM_ITConfig(TIM1, TIM_IT_Update);
-
-//     // RCC->APB2PCENR |= RCC_APB2Periph_TIM1 | RCC_APB2Periph_AFIO | RCC_APB2Periph_GPIOC;
-//     // // Enable DMA
-//     // RCC->AHBPCENR = RCC_AHBPeriph_SRAM | RCC_AHBPeriph_DMA1;
-
-//     // // PC3 is TIM1 CH3
-//     // funPinMode(PC3, GPIO_CFGLR_OUT_10Mhz_AF_PP);
-
-//     // // NOTE: The system can only DMA out at ~2.2MSPS.  2MHz is stable.
-//     // // The idea here is that this copies, byte-at-a-time from the memory
-//     // // into the peripheral addres.
-//     // DMA_CHANNEL->CNTR = SAMPLES * 2; // Number of samples to transfer
-//     // DMA_CHANNEL->MADDR = (uint32_t)s_buffer;
-//     // DMA_CHANNEL->PADDR = (uint32_t)&TIM1->CH3CVR; // This is T1CH2 Compare Register.
-//     // DMA_CHANNEL->CFGR =
-//     //     DMA_CFGR1_DIR |     // MEM2PERIPHERAL
-//     //     DMA_CFGR1_PL |      // High priority.
-//     //     DMA_CFGR1_MSIZE_0 | // 16-bit memory
-//     //     DMA_CFGR1_PSIZE_1 | // 32-bit peripheral
-//     //     DMA_CFGR1_MINC |    // Increase memory.
-//     //     DMA_CFGR1_CIRC |    // Circular mode.
-//     //     DMA_CFGR1_HTIE |    // Half-trigger
-//     //     DMA_CFGR1_TCIE |    // Whole-trigger
-//     //     DMA_CFGR1_EN;       // Enable
-
-//     // NVIC_EnableIRQ(DMA_IRQn);
-//     // DMA_CHANNEL->CFGR |= DMA_CFGR1_EN;
-
-//     // // Reset TIM1 to init all regs
-//     // RCC->APB2PRSTR |= RCC_APB2Periph_TIM1;
-//     // RCC->APB2PRSTR &= ~RCC_APB2Periph_TIM1;
-
-//     // // CTLR1: default is up, events generated, edge align
-//     // // SMCFGR: default clk input is CK_INT
-
-//     // // Prescaler
-//     // TIM1->PSC = 0x0000; // No prescaler, TIM1 clock is 48 MHz
-
-//     // // Auto Reload - sets period
-//     // TIM1->ATRLR = FREQ_TO_TICKS(SAMPLE_RATE);
-
-//     // // Reload immediately
-//     // TIM1->SWEVGR |= TIM1_SWEVGR_TG | TIM1_SWEVGR_UG; // Update and trigger DMA
-
-//     // // Enable CH2 output, normal polarity
-//     // TIM1->CCER |= TIM1_CCER_CC3E; //| TIM1_CCER_CC3P;
-
-//     // // CH3 Mode is output, PWM1 (CC2S = 00, OC2M = 110)
-//     // TIM1->CHCTLR2 |= TIM1_CHCTLR2_OC3M_2 | TIM1_CHCTLR2_OC3M_1;
-
-//     // // Set the Capture Compare Register value to off
-//     // TIM1->CH3CVR = 0; // TIM1->ATRLR / 2; // Set to 50% duty cycle initially
-
-//     // // TRGO on update event
-//     // TIM1->CTLR2 = TIM1_CTLR2_MMS_1;
-
-//     // // Enable TIM1 outputs
-//     // TIM1->BDTR |= TIM1_BDTR_MOE;
-
-//     // TIM1->DMAINTENR |= TIM1_DMAINTENR_UDE | TIM1_DMAINTENR_CC3DE; // Trigger DMA on update event
-
-//     // // Enable TIM1
-//     // TIM1->CTLR1 |= TIM1_CTLR1_CEN;
-// }
-
 /* initialize multicahnnel ADC reading
  * reference: https://curiousscientist.tech/blog/ch32v003f4p6-adc-basics
  */
@@ -605,26 +479,6 @@ static void i2c_slave_process(void)
      * We could wait for an address match, but that would be blocking
      * and isn't needed as RX/TX-flags are only set when addressed properly.
      */
-
-    // if (I2C_CheckEvent(I2C1, I2C_EVENT_SLAVE_TRANSMITTER_ADDRESS_MATCHED)) /* TRA, BUSY, TXE and ADDR flags */
-    // {
-    //     PRINT("I2C_EVENT_SLAVE_TRANSMITTER_ADDRESS_MATCHED\r\n");
-    // }
-
-    // if (I2C_CheckEvent(I2C1, I2C_EVENT_SLAVE_RECEIVER_ADDRESS_MATCHED)) /* BUSY and ADDR flags */
-    // {
-    //     PRINT("I2C_EVENT_SLAVE_RECEIVER_ADDRESS_MATCHED\r\n");
-    // }
-
-    // if (I2C_GetFlagStatus(I2C1, I2C_FLAG_ADDR) != RESET)
-    // {
-    //     PRINT("I2C_FLAG_ADDR\r\n");
-    // }
-
-    // if (I2C_CheckEvent(I2C1, I2C_EVENT_SLAVE_BYTE_RECEIVED)) /* BUSY and RXNE flags */
-    // {
-    //     PRINT("I2C_EVENT_SLAVE_BYTE_RECEIVED\r\n");
-    // }
 
     /* Process receiving data */
     if (I2C_GetFlagStatus(I2C1, I2C_FLAG_RXNE) != RESET)
@@ -761,30 +615,30 @@ static buttons_t read_buttons(void)
         res.button_menu = 1;
     }
 
-    // if (state.flag_check_bounds) // TODO: is this needed?
-    // {
-    //     state.flag_check_bounds = 0;
     if (joy_y > JOYSTICK_THRESHOLD_TOP)
     {
         res.joy_up = 1;
     }
+
     if (joy_y < JOYSTICK_THRESHOLD_BOTTOM)
     {
         res.joy_down = 1;
     }
+
     if (joy_x > JOYSTICK_THRESHOLD_TOP)
     {
         res.joy_right = 1;
     }
+
     if (joy_x < JOYSTICK_THRESHOLD_BOTTOM)
     {
         res.joy_left = 1;
     }
+
     if (usb_voltage > USB_VOLTAGE_THRESHOLD)
     {
         res.usb_plugged = 1;
     }
-    // }
 
     return res;
 }
@@ -859,7 +713,7 @@ int main(void)
 #endif
 
     /* makes sure that we can still flash using SWD */
-    Delay_Ms(1000); // give serial monitor time to open
+    Delay_Ms(1000); // give serial monitor and SWD time to open
 
     PRINT("SystemClk: %u\r\n", (unsigned)SystemCoreClock);
     PRINT("ChipID: %08x\r\n", (unsigned)DBGMCU_GetCHIPID());
@@ -869,13 +723,14 @@ int main(void)
     /* configure the GPIO in- and outputs */
     Outputs_Init();
 
-    /* configure the button debounce timer */
     /* configure the analog input reading */
     ADC_MultiChannel_Init();
     DMA_Tx_Init(DMA1_Channel1, (u32)&ADC1->RDATAR, (u32)state.data.adc_channels, ADC_CHANNELS);
     DMA_Cmd(DMA1_Channel1, ENABLE);
     ADC_SoftwareStartConvCmd(ADC1, ENABLE);
+    /* configure the button debounce timer */
     Button_Init(1, SystemCoreClock / 10000 - 1);
+    /* configure the systick interrupt */
     SysTick_Init();
 
     /* enable AUX power and unset the LCD reset pin */
@@ -883,9 +738,7 @@ int main(void)
     state.data.lcd_reset = 0;
     state.flag_update_outputs = 1;
 
-    /* Turn on the LCD backlight */
-    // TODO: set the PWM to 100% or 50%?
-
+    /* TODO: LCD backlight and Buzzer PWM */
 
     /* set the interrupt output pin */
     set_int_output(Bit_SET);
@@ -922,7 +775,6 @@ int main(void)
             GPIO_WriteBit(AUX_POWER_PORT, AUX_POWER_PIN, state.data.aux_power ? Bit_SET : Bit_RESET);
             GPIO_WriteBit(LCD_RESET_PORT, LCD_RESET_PIN, state.data.lcd_reset ? Bit_SET : Bit_RESET);
         }
-
     }
 }
 
