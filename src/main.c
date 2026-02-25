@@ -30,6 +30,7 @@
 #define JOYSTICK_X_CHANNEL      ADC_Channel_5
 #define JOYSTICK_X_RANK         (6)
 #define ADC_CHANNELS            (6)
+#define ADC_DMA_CHANNEL         DMA1_Channel1
 
 /* digital inputs */
 #define CHARGER_CHARGING_PORT GPIOA // PA2: Charger, charging
@@ -56,14 +57,17 @@
 #define INT_OUTPUT_PIN  GPIO_Pin_16
 
 // PWM
-#define DEBUG_LED_PORT          GPIOA // PA4: debug LED
-#define DEBUG_LED_PIN           GPIO_Pin_4
-#define DEBUG_LED_TIM           TIM3 // mapping 0b11
-#define DEBUG_LED_TIM_REMAP     GPIO_FullRemap_TIM3
-#define LCD_BACKLIGHT_PORT      GPIOB // PB12: LCD BL
-#define LCD_BACKLIGHT_PIN       GPIO_Pin_12
-#define LCD_BACKLIGHT_TIM       TIM1 // mapping 0b010
-#define LCD_BACKLIGHT_TIM_REMAP GPIO_PartialRemap2_TIM1
+#define DEBUG_LED_PORT                GPIOA // PA4: debug LED
+#define DEBUG_LED_PIN                 GPIO_Pin_4
+#define DEBUG_LED_TIM                 TIM3                // TIM3 Channel 2
+#define DEBUG_LED_TIM_REMAP           GPIO_FullRemap_TIM3 // mapping 0b11
+#define DEBUG_LED_TIM_CVR             TIM3->CH2CVR        // TIM3 Channel 2 compare register
+#define LCD_BACKLIGHT_PORT            GPIOB               // PB12: LCD Backlight
+#define LCD_BACKLIGHT_PIN             GPIO_Pin_12
+#define LCD_BACKLIGHT_TIM             TIM1                    // TIM1 Channel 4
+#define LCD_BACKLIGHT_TIM_REMAP       GPIO_PartialRemap2_TIM1 // mapping 0b010
+#define LCD_BACKLIGHT_TIM_CVR         TIM1->CH4CVR            // TIM1 Channel 4 compare register
+#define LCD_BACKLIGHT_TIM_DMA_CHANNEL DMA1_Channel5           // DMA channel for TIM1_UP
 
 // I2C
 #define SDA_PORT         GPIOC
@@ -78,9 +82,6 @@
 #define JOYSTICK_THRESHOLD_TOP    (3000) /* Threshold used to convert a joystick ADC value to a digital signal */
 #define JOYSTICK_THRESHOLD_BOTTOM (1000) /* Threshold used to convert a joystick ADC value to a digital signal */
 #define USB_VOLTAGE_THRESHOLD     (3000) /* (5V/2 / 3.3) * 4095 = 3100, we consider everything above 3000 as "USB connected" */
-
-// TODO: is this pulse width enough?
-#define INT_PULSE_TICKS (SystemCoreClock - 1) /* one second*/
 
 #define TIMER_FREQ ((SystemCoreClock / 10000) - 1) /* the output frequency of all timers: 100Hz */
 
@@ -124,14 +125,15 @@ typedef struct __attribute__((packed))
     uint8_t output_reserved : 5;         /**/
 } addon_data_t;
 
+_Static_assert(sizeof(addon_data_t) == RESULT_BUFFER_SIZE, "raw data and struct size are not aligned!");
+
 typedef struct
 {
-    uint8_t flag_update_lcd : 1;           // flag to indicate that the LCD PWM value should be updated
-    uint8_t flag_update_buzzer : 1;        // flag to indicate that the buzzer PWM value should be updated
+    uint8_t flag_update_led : 1;           // flag to indicate that the LED PWM value should be updated
     uint8_t flag_update_outputs : 1;       // flag to indicate that the outputs should be updated
     uint8_t flag_button_scan_halfway : 1;  // flag to indicate that scanning of the buttons has finished
     uint8_t flag_button_state_changed : 1; // flag to indicate that the state of one of the buttons has changed
-    uint8_t reserved : 3;                  // reserved for future use
+    uint8_t reserved : 4;                  // reserved for future use
     uint8_t raw_data_ptr;                  // current index in the raw_data buffer to read/write using I2C
     union
     {
@@ -283,7 +285,7 @@ static void IIC_Init(void)
 }
 
 // reference: https://github.com/openwch/ch32x035/blob/main/EVT/EXAM/TIM/TIM_DMA/User/main.c
-static void LCD_PWM_Init(uint16_t psc, uint16_t arr, uint16_t ccp)
+static void LCD_PWM_Init(uint16_t arr, uint16_t psc, uint16_t ccp)
 {
     GPIO_InitTypeDef GPIO_InitStructure = {0};
     TIM_TimeBaseInitTypeDef TIM_TimeBaseInitStructure = {0};
@@ -307,11 +309,11 @@ static void LCD_PWM_Init(uint16_t psc, uint16_t arr, uint16_t ccp)
     TIM_TimeBaseInitStructure.TIM_RepetitionCounter = 0;
     TIM_TimeBaseInit(LCD_BACKLIGHT_TIM, &TIM_TimeBaseInitStructure);
 
-    TIM_OCInitStructure.TIM_OCMode = TIM_OCMode_PWM2;
+    TIM_OCInitStructure.TIM_OCMode = TIM_OCMode_PWM2; // High until CNT < CCR
     TIM_OCInitStructure.TIM_OutputState = TIM_OutputState_Enable;
-    TIM_OCInitStructure.TIM_Pulse = ccp;
+    TIM_OCInitStructure.TIM_Pulse = ccp; // start duty cycle
     TIM_OCInitStructure.TIM_OCPolarity = TIM_OCPolarity_High;
-    TIM_OC1Init(LCD_BACKLIGHT_TIM, &TIM_OCInitStructure);
+    TIM_OC4Init(LCD_BACKLIGHT_TIM, &TIM_OCInitStructure);
 
     TIM_OC4PreloadConfig(LCD_BACKLIGHT_TIM, TIM_OCPreload_Disable);
     TIM_ARRPreloadConfig(LCD_BACKLIGHT_TIM, ENABLE);
@@ -336,8 +338,8 @@ void LCD_PWM_DMA_Init(u32 memadr)
 
     RCC_AHBPeriphClockCmd(RCC_AHBPeriph_DMA1, ENABLE);
 
-    DMA_DeInit(DMA1_Channel5);
-    DMA_InitStructure.DMA_PeripheralBaseAddr = (u32)TIM1->CH4CVR__R32;
+    DMA_DeInit(LCD_BACKLIGHT_TIM_DMA_CHANNEL);
+    DMA_InitStructure.DMA_PeripheralBaseAddr = (u32)&LCD_BACKLIGHT_TIM_CVR;
     DMA_InitStructure.DMA_MemoryBaseAddr = memadr;
     DMA_InitStructure.DMA_DIR = DMA_DIR_PeripheralDST;
     DMA_InitStructure.DMA_BufferSize = 1;
@@ -348,12 +350,12 @@ void LCD_PWM_DMA_Init(u32 memadr)
     DMA_InitStructure.DMA_Mode = DMA_Mode_Circular;
     DMA_InitStructure.DMA_Priority = DMA_Priority_High;
     DMA_InitStructure.DMA_M2M = DMA_M2M_Disable;
-    DMA_Init(DMA1_Channel5, &DMA_InitStructure);
+    DMA_Init(LCD_BACKLIGHT_TIM_DMA_CHANNEL, &DMA_InitStructure);
 
-    DMA_Cmd(DMA1_Channel5, ENABLE);
+    DMA_Cmd(LCD_BACKLIGHT_TIM_DMA_CHANNEL, ENABLE);
 }
 
-static void LED_PWM_Init(uint16_t psc, uint16_t arr, uint16_t ccp)
+static void LED_PWM_Init(uint16_t arr, uint16_t psc, uint16_t ccp)
 {
     GPIO_InitTypeDef GPIO_InitStructure = {0};
     TIM_TimeBaseInitTypeDef TIM_TimeBaseInitStructure = {0};
@@ -364,7 +366,7 @@ static void LED_PWM_Init(uint16_t psc, uint16_t arr, uint16_t ccp)
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO | RCC_APB2Periph_GPIOA, ENABLE);
 
     /* set pinmux */
-    GPIO_PinRemapConfig(GPIO_FullRemap_TIM3, ENABLE); // set LED (PA4) on CH2 of TIM3
+    GPIO_PinRemapConfig(DEBUG_LED_TIM_REMAP, ENABLE); // set LED (PA4) on CH2 of TIM3
 
     GPIO_InitStructure.GPIO_Pin = DEBUG_LED_PIN;
     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;
@@ -378,51 +380,16 @@ static void LED_PWM_Init(uint16_t psc, uint16_t arr, uint16_t ccp)
     TIM_TimeBaseInitStructure.TIM_RepetitionCounter = 0;
     TIM_TimeBaseInit(DEBUG_LED_TIM, &TIM_TimeBaseInitStructure);
 
-    TIM_OCInitStructure.TIM_OCMode = TIM_OCMode_PWM2;
+    TIM_OCInitStructure.TIM_OCMode = TIM_OCMode_PWM2; // High until CNT < CCR
     TIM_OCInitStructure.TIM_OutputState = TIM_OutputState_Enable;
     TIM_OCInitStructure.TIM_Pulse = ccp;
     TIM_OCInitStructure.TIM_OCPolarity = TIM_OCPolarity_High;
-    TIM_OC1Init(DEBUG_LED_TIM, &TIM_OCInitStructure);
+    TIM_OC2Init(DEBUG_LED_TIM, &TIM_OCInitStructure);
 
     TIM_OC2PreloadConfig(DEBUG_LED_TIM, TIM_OCPreload_Disable);
     TIM_ARRPreloadConfig(DEBUG_LED_TIM, ENABLE);
 }
 
-/*********************************************************************
- * @fn      TIM1_DMA_Init
- *
- * @brief   Initializes the TIM DMAy Channelx configuration.
- *
- * @param   DMA_CHx -
- *            x can be 1 to 7.
- *          ppadr - Peripheral base address.
- *          memadr - Memory base address.
- *          bufsize - DMA channel buffer size.
- *
- * @return  none
- */
-void LED_PWM_DMA_Init(u32 memadr)
-{
-    DMA_InitTypeDef DMA_InitStructure = {0};
-
-    RCC_AHBPeriphClockCmd(RCC_AHBPeriph_DMA1, ENABLE);
-
-    DMA_DeInit(DMA1_Channel2);
-    DMA_InitStructure.DMA_PeripheralBaseAddr = (u32)TIM3->CH2CVR__R32;
-    DMA_InitStructure.DMA_MemoryBaseAddr = memadr;
-    DMA_InitStructure.DMA_DIR = DMA_DIR_PeripheralDST;
-    DMA_InitStructure.DMA_BufferSize = 1;
-    DMA_InitStructure.DMA_PeripheralInc = DMA_PeripheralInc_Disable;
-    DMA_InitStructure.DMA_MemoryInc = DMA_MemoryInc_Disable;
-    DMA_InitStructure.DMA_PeripheralDataSize = DMA_PeripheralDataSize_HalfWord;
-    DMA_InitStructure.DMA_MemoryDataSize = DMA_MemoryDataSize_HalfWord;
-    DMA_InitStructure.DMA_Mode = DMA_Mode_Circular;
-    DMA_InitStructure.DMA_Priority = DMA_Priority_Low;
-    DMA_InitStructure.DMA_M2M = DMA_M2M_Disable;
-    DMA_Init(DMA1_Channel2, &DMA_InitStructure);
-
-    DMA_Cmd(DMA1_Channel2, ENABLE);
-}
 
 /* initialize multicahnnel ADC reading
  * reference: https://curiousscientist.tech/blog/ch32v003f4p6-adc-basics
@@ -590,7 +557,9 @@ static void i2c_slave_process(void)
                 state.raw_data_ptr += ret;
                 if (ret == 2)
                 {
-                    state.data.led_brightness = new_value; // DMA will set the new value automatically
+                    state.data.led_brightness = new_value;
+                    // there is no DMA for TIM3, so we nuse this flag to set the new value manually
+                    state.flag_update_led = 1;
                 }
                 break;
             }
@@ -807,8 +776,8 @@ int main(void)
 
     /* configure the analog input reading using DMA */
     ADC_MultiChannel_Init();
-    DMA_Tx_Init(DMA1_Channel1, (u32)&ADC1->RDATAR, (u32)state.data.adc_channels, ADC_CHANNELS);
-    DMA_Cmd(DMA1_Channel1, ENABLE);
+    DMA_Tx_Init(ADC_DMA_CHANNEL, (u32)&ADC1->RDATAR, (u32)state.data.adc_channels, ADC_CHANNELS);
+    DMA_Cmd(ADC_DMA_CHANNEL, ENABLE);
     ADC_SoftwareStartConvCmd(ADC1, ENABLE);
 
     /* configure the LCD backlight PWM output using DMA */
@@ -820,8 +789,6 @@ int main(void)
 
     /* configure the Debug LED PWM output using DMA */
     LED_PWM_Init(100, TIMER_FREQ, state.data.led_brightness);
-    LED_PWM_DMA_Init((u32)&state.data.led_brightness);
-    TIM_DMACmd(DEBUG_LED_TIM, TIM_DMA_Update, ENABLE);
     TIM_Cmd(DEBUG_LED_TIM, ENABLE);
     TIM_CtrlPWMOutputs(DEBUG_LED_TIM, ENABLE);
 
@@ -836,6 +803,7 @@ int main(void)
     /* set the LCD backlight and LED at half brightness */
     state.data.lcd_brightness = 50;
     state.data.led_brightness = 50;
+    state.flag_update_led = 1; /* there is no DMA for TIM3, so we use this flag to manually update */
 
     PRINT("Expander Init done\r\n");
 
@@ -867,6 +835,13 @@ int main(void)
                 Delay_Ms(100);
                 reset_to_bootloader();
             }
+        }
+
+        /* there is no DMA for TIM3 so we set the compare value manually w*/
+        if (state.flag_update_led)
+        {
+            state.flag_update_led = 0;
+            DEBUG_LED_TIM_CVR = state.data.led_brightness;
         }
     }
 }

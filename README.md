@@ -44,20 +44,52 @@ TODO
 In Micropython on the ESP32-S3, use the `readfrom_mem()` and `writeto_mem()` I2C APIs to interface with the expander, e.g.:
 
 ```
-from machine import I2C
+from machine import I2C, Pin
+import struct
+import time
 
 ADDRESS = 0x38
 
-i2c = I2C(freq=400000)          # create I2C peripheral at frequency of 400kHz
-                                # depending on the port, extra parameters may be required
-                                # to select the peripheral and/or pins to use
+def callback(p):
+    # read the button states
+    print("button state:", expander_i2c.readfrom_mem(ADDRESS, 4, 2).hex())
 
-i2c.scan()                      # scan for peripherals, returning a list of 7-bit addresses
+pin_interrupt = Pin(38, Pin.IN)
+pin_interrupt.irq(trigger=Pin.IRQ_RISING, handler=callback)
 
-i2c.readfrom_mem(ADDRESS, 8, 3)      # read 3 bytes from memory of peripheral ADDRESS,
-                                     #   starting at memory-address 8 in the peripheral
-i2c.writeto_mem(ADDRESS, 2, b'\x10') # write 1 byte to memory of peripheral ADDRESS
-                                     #   starting at address 2 in the peripheral
+expander_i2c = I2C(sda=Pin(39), scl=Pin(42), freq=400000)
+# read the version:
+print("version:", expander_i2c.readfrom_mem(ADDRESS, 0, 3).hex())
+
+# read the analog state
+print("analog channels:", struct.unpack("<HHHHHH", expander_i2c.readfrom_mem(ADDRESS, 6, 12)))
+
+# read the debug led state
+print("debug LED PWM:", struct.unpack("<H", expander_i2c.readfrom_mem(ADDRESS, 20, 2)))
+print("LCD backlight PWM:", struct.unpack("<H", expander_i2c.readfrom_mem(ADDRESS, 22, 2)))
+
+# set the LCD brightness to 50%
+expander_i2c.writeto_mem(ADDRESS, 18, struct.pack("<H", 50))
+
+# read the LCD brightness
+print("LCD backlight PWM:", struct.unpack("<H", expander_i2c.readfrom_mem(ADDRESS, 18, 2)))
+
+# fade the debug LED up and down
+for i in range (100):
+    expander_i2c.writeto_mem(ADDRESS, 20, struct.pack("<H", i))
+    time.sleep(.1)
+for i in range (100, 0, -1):
+    expander_i2c.writeto_mem(ADDRESS, 20, struct.pack("<H", i))
+    time.sleep(.1)
+
+# turn off 3v3 aux
+expander_i2c.writeto_mem(ADDRESS, 22, b'\x00')
+
+# turn on 3v3 aux
+expander_i2c.writeto_mem(ADDRESS, 22, b'\x01')
+
+# trigger a reboot to bootloader
+expander_i2c.writeto_mem(ADDRESS, 22, b'\x04')
 
 ```
 
