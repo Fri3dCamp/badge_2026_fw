@@ -53,8 +53,8 @@
 #define AUX_POWER_PIN   GPIO_Pin_6
 #define LCD_RESET_PORT  GPIOB // PB11: LCD reset
 #define LCD_RESET_PIN   GPIO_Pin_11
-#define INT_OUTPUT_PORT GPIOC // PC16: Interrupt output
-#define INT_OUTPUT_PIN  GPIO_Pin_16
+#define INT_OUTPUT_PORT GPIOC // PC17: Interrupt output
+#define INT_OUTPUT_PIN  GPIO_Pin_17
 
 // PWM
 #define DEBUG_LED_PORT                GPIOA // PA4: debug LED

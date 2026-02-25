@@ -8,23 +8,50 @@ The firmware handles different functions of the badge and acts as a I2C IO expan
  * Joystick and button handling
  * LCD brightness and reset control
  * debug LED control
- * Buzzer control
 
 Please check the [schematics](local_link) to get more details about how these peripherals of the badge are connected to the CH32X035 MCU.
 
 The expander has I2C address `0x38` and uses the following registers to interface/control with its connected peripherals:
 
-| Address | Name | Read/Write | Bytes | comments |
+| Address (hex) | Name | Access | Bytes | description |
 |-|-|-|-|-|
-| 0x00 | Battery monitor | R | 1 | Reports the battery voltage |
-| 0x01 | USB monitor | R | 1 | Reports the USB voltage |
-| 0x02 | Joystick X | R | 2 | Reports the current joystick position on the X axis (0-4096) |
-| 0x04 | Joystick Y | R | 2 | Reports the current joystick position on the Y axis (0-4096) |
-| 0x06 | Digital inputs | R | 2 | description of bits |
-| 0x08 | Digital outputs | R/W | 1 | description of bits |
-| 0x09 | Debug LED brightness | R/W | 1 | Set the brightness of the debug LED (0-255) |
-| 0x0A | LCD backlight brightness | R/W | 1 | Set the brightness of the LCD screen (0-255) |
+| 0x00 | Version number | R | 3 | Reports the firmware version number |
+| 0x04 | Button states | R | 2 | Reports the button states (see below) |
+| 0x06 | DMM AIN1 | R | 2 | DMM AIN1 analog value (0-4096) |
+| 0x08 | DMM AIN0 | R | 2 | DMM AIN0 analog value (0-4096) |
+| 0x0a | Battery monitor | R | 2 | Battery voltage analog value (0-4096) (1) |
+| 0x0c | USB voltage | R | 2 | USB voltage (0-4096) (1) |
+| 0x0e | Joystick Y | R | 2 | Joystick Y-axis analog value (0-4096) |
+| 0x10 | Joystick X | R | 2 | Joystick X-axis analog value (0-4096) |
+| 0x12 | LCD brightness | R/W | 2 | LCD brightness value (0-100) |
+| 0x06 | Debug LED | R/W | 2 | debug LED brightness (0-100) |
+| 0x08 | Digital outputs | R/W | 1 | digital output state (see blow) |
+ 1. be aware that the full range of 0-4095 will not be used since there is a voltage divider used.
 
+The button states are a 2-byte value with the following encoding:
+| Bit | Name |
+|-|-|
+| \[15:12\] | reserved |
+| 11 | USB plugged state |
+| 10 | Joystick: Right state  |
+| 9 | Joystick: Left state  |
+| 8 | Joystick: Down state  |
+| 7 | Joystick: Up state |
+| 6 | Button Menu state |
+| 5 | Button B state |
+| 4 | Button A state |
+| 3 | Button Y state |
+| 2 | Button X state |
+| 1 | Charger: standby state |
+| 0 | Charger: charging state |
+
+The output states are a 1-byte value with the following encoding:
+| Bit | Name |
+|-|-|
+| \[7:3\] | reserved |
+| 2 | trigger reboot to bootloader* |
+| 1 | LCD Reset state |
+| 0 | AUX 3v3 state |
 
 ## Building
 
@@ -54,7 +81,7 @@ def callback(p):
     # read the button states
     print("button state:", expander_i2c.readfrom_mem(ADDRESS, 4, 2).hex())
 
-pin_interrupt = Pin(38, Pin.IN)
+pin_interrupt = Pin(3, Pin.IN)
 pin_interrupt.irq(trigger=Pin.IRQ_RISING, handler=callback)
 
 expander_i2c = I2C(sda=Pin(39), scl=Pin(42), freq=400000)
