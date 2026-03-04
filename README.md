@@ -1,6 +1,8 @@
 ## Fri3d Badge 2026 IO expander firmware
 
-This firmware runs on the [CH32X035](https://www.wch-ic.com/products/CH32X035.html) companian MCU of the [Fri3d Camp](https://fri3d.be) 2026 badge.
+This firmware runs on the [CH32X035](https://www.wch-ic.com/products/CH32X035.html) companian MCU of the [Fri3d Camp 2026 badge](https://github.com/Fri3dCamp/badge_2026).
+
+> If you are looking for the firmware that runs on the main MCU of this badge (ESP32S3), please visit [MicropythonOS.com](https://micropythonos.com).
 
 The firmware handles different functions of the badge and acts as a I2C IO expander to the main ESP32-S3 MCU of the badge:
  * Battery and charger monitoring
@@ -9,9 +11,9 @@ The firmware handles different functions of the badge and acts as a I2C IO expan
  * LCD brightness and reset control
  * debug LED control
 
-Please check the [schematics](local_link) to get more details about how these peripherals of the badge are connected to the CH32X035 MCU.
+Please check the [schematics](https://github.com/Fri3dCamp/badge_2026_hw) to get more details about how these peripherals of the badge are connected to the CH32X035 MCU.
 
-The expander has I2C address `0x38` and uses the following registers to interface/control with its connected peripherals:
+The expander has I2C address `0x50` and uses the following registers to interface/control with its connected peripherals:
 
 | Address (hex) | Name | Access | Bytes | description |
 |-|-|-|-|-|
@@ -55,7 +57,7 @@ The output states are a 1-byte value with the following encoding:
 
 ## Building
 
-Use [platformio](https://platformio.org) to build this project. If you use the command line, build using:
+Use [platformio](https://platformio.org) to build this project. You should install the [ch32v platform package](https://github.com/Community-PIO-CH32V/platform-ch32v) as well. If you use the command line, build using:
 
 ```
 pio run
@@ -75,7 +77,7 @@ from machine import I2C, Pin
 import struct
 import time
 
-ADDRESS = 0x38
+ADDRESS = 0x50
 
 def callback(p):
     # read the button states
