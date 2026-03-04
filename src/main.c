@@ -74,7 +74,7 @@
 #define SDA_PIN          GPIO_Pin_18
 #define SCL_PORT         GPIOC
 #define SCL_PIN          GPIO_Pin_19
-#define I2C_ADDRESS      (0x38)
+#define I2C_ADDRESS      (0x50)
 #define I2C_TIMEOUT      (-2)
 #define I2C_TIMEOUT_TICK ((SystemCoreClock / 10) - 1) /* 100 ms */
 
@@ -332,7 +332,7 @@ static void LCD_PWM_Init(uint16_t arr, uint16_t psc, uint16_t ccp)
  *
  * @return  none
  */
-void LCD_PWM_DMA_Init(u32 memadr)
+static void LCD_PWM_DMA_Init(u32 memadr)
 {
     DMA_InitTypeDef DMA_InitStructure = {0};
 
@@ -389,7 +389,6 @@ static void LED_PWM_Init(uint16_t arr, uint16_t psc, uint16_t ccp)
     TIM_OC2PreloadConfig(DEBUG_LED_TIM, TIM_OCPreload_Disable);
     TIM_ARRPreloadConfig(DEBUG_LED_TIM, ENABLE);
 }
-
 
 /* initialize multicahnnel ADC reading
  * reference: https://curiousscientist.tech/blog/ch32v003f4p6-adc-basics
@@ -706,7 +705,7 @@ static buttons_t read_buttons(void)
 /*********************************************************************
  * @fn      Button_Scan
  *
- * @brief   Perform input button scan.
+ * @brief   Perform input button scan. triggered every 10ms by a timer
  *
  * @return  none
  */
@@ -716,7 +715,7 @@ static void Button_Scan(void)
     static buttons_t previous_button_state = {0};
 
     scan_cnt++;
-    if ((scan_cnt % 10) == 0)
+    if ((scan_cnt % 10) == 0) // every 100ms
     {
         /* reset the debounce counter */
         scan_cnt = 0;
@@ -731,14 +730,13 @@ static void Button_Scan(void)
             memset(&previous_button_state, 0, BUTTON_SIZE);
         }
     }
-    else if ((scan_cnt % 5) == 0)
+    else if ((scan_cnt % 5) == 0) // every 50ms
     {
         state.flag_button_scan_halfway = 1;
         /* Save the first scan result */
         previous_button_state = read_buttons();
     }
 }
-
 
 /* main */
 int main(void)
@@ -837,7 +835,7 @@ int main(void)
             }
         }
 
-        /* there is no DMA for TIM3 so we set the compare value manually w*/
+        /* there is no DMA for TIM3 so we set the compare value manually */
         if (state.flag_update_led)
         {
             state.flag_update_led = 0;
@@ -847,17 +845,6 @@ int main(void)
 }
 
 /* interrupt handlers */
-
-// void ADC1_IRQHandler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
-// void ADC1_IRQHandler(void)
-// {
-//     if (ADC_GetITStatus(ADC1, ADC_IT_AWD) != RESET)
-//     {
-//         check_bounds = 1;
-//         ADC_ClearITPendingBit(ADC1, ADC_IT_AWD);
-//     }
-// }
-
 void TIM2_UP_IRQHandler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
 void TIM2_UP_IRQHandler(void)
 {
@@ -907,4 +894,3 @@ void I2C1_ER_IRQHandler(void)
 {
     // do nothing here
 }
-
