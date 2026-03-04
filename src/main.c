@@ -745,9 +745,12 @@ int main(void)
     memset(&state, 0, sizeof(addon_state_t));
 
     /* set the version number from git */
-    state.data.version[0] = atoi(VERSION_MAJOR) & 0xff;
-    state.data.version[1] = atoi(VERSION_MINOR) & 0xff;
-    state.data.version[2] = atoi(VERSION_PATCH) & 0xff;
+    char version_major[] = VERSION_MAJOR;
+    char version_minor[] = VERSION_MINOR;
+    char version_patch[] = VERSION_PATCH;
+    state.data.version[0] = atoi(version_major) & 0xff;
+    state.data.version[1] = atoi(version_minor) & 0xff;
+    state.data.version[2] = atoi(version_patch) & 0xff;
 
     SystemInit();
 #ifdef NVIC_PriorityGroup_2
