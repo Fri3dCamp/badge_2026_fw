@@ -799,7 +799,7 @@ int main(void)
     SystemCoreClockUpdate();
     Delay_Init();
 #if (DEBUG)
-    USART4_Printf_Init(115200);
+    USART_Printf_Init(115200);
 #endif
 
     /* makes sure that we can still flash using SWD */
