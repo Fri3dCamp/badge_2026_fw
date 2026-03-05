@@ -65,7 +65,8 @@ pio run
 
 ## Flashing
 
-TODO
+TODO: explain how to upload using the UART ISP
+TODO: explain how to upload using MicropythonOS
 
 ## Development
 
@@ -80,6 +81,8 @@ import time
 ADDRESS = 0x50
 
 def callback(p):
+    # debounce
+    time.sleep(.01)
     # read the button states
     print("button state:", expander_i2c.readfrom_mem(ADDRESS, 4, 2).hex())
 

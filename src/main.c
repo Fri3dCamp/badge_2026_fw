@@ -576,7 +576,11 @@ static void i2c_slave_process(void)
             default: {
                 while (I2C_GetFlagStatus(I2C1, I2C_FLAG_RXNE) != RESET)
                 {
+#if (DEBUG)
+                    PRINT("received %x\r\n", I2C_ReceiveData(I2C1));
+#else
                     I2C_ReceiveData(I2C1);
+#endif
                 }
                 PRINT("we do not allow writing to offset 0x%02x\r\n", state.raw_data_ptr);
             }
