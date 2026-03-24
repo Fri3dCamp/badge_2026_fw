@@ -847,6 +847,13 @@ int main(void)
 
     PRINT("Expander Init done\r\n");
 
+    /* reset the LCD at boot */
+    GPIO_WriteBit(LCD_RESET_PORT, LCD_RESET_PIN, Bit_RESET);
+    Delay_Ms(100);
+    GPIO_WriteBit(LCD_RESET_PORT, LCD_RESET_PIN, Bit_SET);
+    Delay_Ms(120);
+    GPIO_WriteBit(LCD_RESET_PORT, LCD_RESET_PIN, Bit_RESET);
+
     while (1)
     {
         /* this flag is set when we are halfway the next button scan */
