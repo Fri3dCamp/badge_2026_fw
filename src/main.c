@@ -988,6 +988,20 @@ int main(void)
 #endif
     SystemCoreClockUpdate();
     Delay_Init();
+
+    /* configure the output GPIO */
+    Outputs_Init();
+
+    /* Perform a hard reset of the LCD controller early at boot:
+     *   Pull RESET low → wait 120 ms → pull high again.
+     *   This satisfies the reset timing requirements of ST7789v SPI LCD modules.
+     */
+    GPIO_WriteBit(LCD_RESET_PORT, LCD_RESET_PIN, Bit_SET);
+    Delay_Ms(10);
+    GPIO_WriteBit(LCD_RESET_PORT, LCD_RESET_PIN, Bit_RESET);
+    Delay_Ms(120);
+    GPIO_WriteBit(LCD_RESET_PORT, LCD_RESET_PIN, Bit_SET);
+
 #if (DEBUG)
     USART_Printf_Init(115200);
 #endif
@@ -1002,9 +1016,8 @@ int main(void)
 
     /* configure the I2C pins and interrupts */
     IIC_Init(); // maps SWD lines to I2C
-    /* configure the GPIO in- and outputs */
-    Outputs_Init();
-    Button_Init(1, TIMER_FREQ); // configure the button debounce timer (TIM3, 10 ms tick)
+    /* configure the GPIO inputs and debounce timer */
+    Button_Init(1, TIMER_FREQ);
 
     /* configure the analog input reading using DMA:
      *   ADC1 scans all ADC_CHANNELS in continuous/circular mode;
@@ -1035,22 +1048,12 @@ int main(void)
 
     /* Apply safe defaults: enable AUX power, release LCD reset, set 50% brightness */
     state.data.aux_power = 1;
-    state.data.lcd_reset = 0;
+    state.data.lcd_reset = 1;
     state.flag_update_outputs = 1;
     state.data.lcd_brightness = 50;
     state.data.led_brightness = 50;
 
     PRINT("Expander Init done\r\n");
-
-    GPIO_WriteBit(LCD_RESET_PORT, LCD_RESET_PIN, Bit_RESET);
-    Delay_Ms(100);
-    /* Perform a hard reset of the LCD controller at boot:
-     *   Pull RESET high → wait 100 ms → pull low → wait 120 ms → pull high again.
-     *   This satisfies the reset timing requirements of ST7789v SPI LCD modules.
-     */
-    GPIO_WriteBit(LCD_RESET_PORT, LCD_RESET_PIN, Bit_SET);
-    Delay_Ms(120);
-    GPIO_WriteBit(LCD_RESET_PORT, LCD_RESET_PIN, Bit_RESET);
 
     /* Main event loop — all heavy lifting is done in ISRs and DMA;
      * the loop only reacts to flags set by those background mechanisms.
