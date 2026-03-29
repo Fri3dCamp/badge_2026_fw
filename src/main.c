@@ -203,7 +203,8 @@ typedef struct __attribute__((packed))
     uint8_t aux_power : 1;               /* 1 = enable the AUX power rail — READ-WRITE */
     uint8_t lcd_reset : 1;               /* 1 = release LCD from reset (0 = held in reset) — READ-WRITE */
     uint8_t reboot : 1;                  /* write 1 to trigger a reboot into the bootloader — READ-WRITE */
-    uint8_t output_reserved : 5;
+    uint8_t remap : 1;                   /* write 1 to remap the SWD to the I2C pins */
+    uint8_t output_reserved : 4;
 } addon_data_t;
 
 /* Compile-time check: struct layout must match RESULT_BUFFER_SIZE exactly */
@@ -1089,6 +1090,19 @@ int main(void)
                 PRINT("Reboot to bootloader trigger\r\n");
                 Delay_Ms(100);
                 reset_to_bootloader();
+            }
+            if (state.data.remap)
+            {
+                PRINT("Remap SWD trigger\r\n");
+                Delay_Ms(100);
+                /* disable I2C interrupts */
+                I2C_ITConfig(I2C1, I2C_IT_EVT | I2C_IT_ERR | I2C_IT_BUF, DISABLE);
+
+                /* enable I2C1 */
+                I2C_Cmd(I2C1, DISABLE);
+
+                /* Re-enable DIO (SWD) interface on these pins */
+                GPIO_PinRemapConfig(GPIO_Remap_SWJ_Disable, DISABLE);
             }
         }
     }
