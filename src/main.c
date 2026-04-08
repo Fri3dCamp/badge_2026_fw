@@ -124,6 +124,7 @@
 #define I2C_ADDRESS      (0x50) /* 7-bit slave address; write=0xA0, read=0xA1 */
 #define I2C_TIMEOUT      (-2)
 #define I2C_TIMEOUT_TICK ((SystemCoreClock / 10) - 1) /* 100 ms timeout for I2C reads */
+#define I2C_SPEED        (400000)
 
 /*
  * Joystick ADC thresholds for converting analog position to digital direction bits.
@@ -317,7 +318,7 @@ static void Button_Init(uint16_t arr, uint16_t psc)
     TIM_Cmd(TIM3, ENABLE);
 }
 
-static void IIC_Init(void)
+static void IIC_Init(uint32_t bound, uint16_t address)
 {
     GPIO_InitTypeDef GPIO_InitStructure = {0};
     I2C_InitTypeDef I2C_InitStructure = {0};
@@ -345,10 +346,10 @@ static void IIC_Init(void)
     GPIO_Init(SCL_PORT, &GPIO_InitStructure);
 
     /* configure I2C1 */
-    I2C_InitStructure.I2C_ClockSpeed = 400000;                                // bus speed
+    I2C_InitStructure.I2C_ClockSpeed = bound;                                 // bus speed
     I2C_InitStructure.I2C_Mode = I2C_Mode_I2C;                                // there is only 1 mode
     I2C_InitStructure.I2C_DutyCycle = I2C_DutyCycle_16_9;                     // I2C fast mode Tlow/Thigh = 16/9
-    I2C_InitStructure.I2C_OwnAddress1 = I2C_ADDRESS << 1;                     // 7 or 10 bit address
+    I2C_InitStructure.I2C_OwnAddress1 = address << 1;                         // 7 or 10 bit address
     I2C_InitStructure.I2C_Ack = I2C_Ack_Enable;                               // automatic acknowledge
     I2C_InitStructure.I2C_AcknowledgedAddress = I2C_AcknowledgedAddress_7bit; // use 7 bit address
     I2C_Init(I2C1, &I2C_InitStructure);
@@ -366,11 +367,16 @@ static void IIC_Init(void)
     NVIC_InitStruct.NVIC_IRQChannelCmd = ENABLE;
     NVIC_Init(&NVIC_InitStruct);
 
-    /* enable I2C interrupts */
-    I2C_ITConfig(I2C1, I2C_IT_EVT | I2C_IT_ERR | I2C_IT_BUF, ENABLE); // TODO: also I2C_IT_BUF?
+    /* Enable I2C event, error, and buffer interrupts.
+     * EVT fires on: address match, byte received, byte transmitted, stop detected.
+     * ERR fires on: bus error, arbitration lost, acknowledge failure, etc.
+     * BUF fires on: TXE/RXNE (needed so we get an interrupt for each data byte).
+     */
+    I2C_ITConfig(I2C1, I2C_IT_EVT | I2C_IT_ERR | I2C_IT_BUF, ENABLE);
 
     /* enable clock stretching */
     I2C_StretchClockCmd(I2C1, ENABLE);
+
     /* enable I2C1 */
     I2C_Cmd(I2C1, ENABLE);
 }
@@ -1016,7 +1022,7 @@ int main(void)
     PRINT("ChipID: %08x\r\n", (unsigned)DBGMCU_GetCHIPID());
 
     /* configure the I2C pins and interrupts */
-    IIC_Init(); // maps SWD lines to I2C
+    IIC_Init(I2C_SPEED, I2C_ADDRESS); // maps SWD lines to I2C
     /* configure the GPIO inputs and debounce timer */
     Button_Init(1, TIMER_FREQ);
 
@@ -1098,7 +1104,7 @@ int main(void)
                 /* disable I2C interrupts */
                 I2C_ITConfig(I2C1, I2C_IT_EVT | I2C_IT_ERR | I2C_IT_BUF, DISABLE);
 
-                /* enable I2C1 */
+                /* disable I2C1 */
                 I2C_Cmd(I2C1, DISABLE);
 
                 /* Re-enable DIO (SWD) interface on these pins */
