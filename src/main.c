@@ -21,6 +21,8 @@
  *     - AUX power rail enable/disable
  *     - LCD reset signal
  *     - Reboot-to-bootloader trigger
+ *     - Remap I2C to SWD trigger
+ *     - Lora reset signal
  *
  *   Interrupt output:
  *     - PC17 is pulsed HIGH when any digital input state changes, then cleared
@@ -96,6 +98,8 @@
 #define LCD_RESET_PIN   GPIO_Pin_11
 #define INT_OUTPUT_PORT GPIOC // PC17: Interrupt output
 #define INT_OUTPUT_PIN  GPIO_Pin_17
+#define LORA_RESET_PORT GPIOB // PB1/5: Lora reset pin
+#define LORA_RESET_PIN  GPIO_Pin_1
 
 // PWM
 #define DEBUG_LED_PORT                GPIOB // PB3: debug LED
@@ -200,7 +204,8 @@ typedef struct __attribute__((packed))
     uint8_t lcd_reset : 1;               /* 1 = release LCD from reset (0 = held in reset) — READ-WRITE */
     uint8_t reboot : 1;                  /* write 1 to trigger a reboot into the bootloader — READ-WRITE */
     uint8_t remap : 1;                   /* write 1 to remap the SWD to the I2C pins */
-    uint8_t output_reserved : 4;
+    uint8_t lora_reset : 1;              /* 1 = release Lora module from reset (0 = held in reset) — READ-WRITE */
+    uint8_t output_reserved : 3;
 } addon_data_t;
 
 /* Compile-time check: struct layout must match RESULT_BUFFER_SIZE exactly */
@@ -242,7 +247,7 @@ static void Outputs_Init(void)
     GPIO_InitTypeDef GPIO_InitStructure = {0};
 
     /* AUX power and LCD reset are on GPIOB */
-    GPIO_InitStructure.GPIO_Pin = AUX_POWER_PIN | LCD_RESET_PIN;
+    GPIO_InitStructure.GPIO_Pin = AUX_POWER_PIN | LCD_RESET_PIN | LORA_RESET_PIN;
     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
     GPIO_Init(GPIOB, &GPIO_InitStructure);
@@ -895,15 +900,16 @@ int main(void)
     /* configure the output GPIO */
     Outputs_Init();
 
-    /* Perform a hard reset of the LCD controller early at boot:
+    /* Perform a hard reset of the LCD controller and Lora module early at boot:
      *   Pull RESET low → wait 120 ms → pull high again.
-     *   This satisfies the reset timing requirements of ST7789v SPI LCD modules.
+     *   This satisfies the reset timing requirements of ST7789v SPI LCD modules
+     *   and the SX1262
      */
-    GPIO_WriteBit(LCD_RESET_PORT, LCD_RESET_PIN, Bit_SET);
+    GPIO_WriteBit(GPIOB, LCD_RESET_PIN | LORA_RESET_PIN, Bit_SET);
     Delay_Ms(10);
-    GPIO_WriteBit(LCD_RESET_PORT, LCD_RESET_PIN, Bit_RESET);
+    GPIO_WriteBit(GPIOB, LCD_RESET_PIN | LORA_RESET_PIN, Bit_RESET);
     Delay_Ms(120);
-    GPIO_WriteBit(LCD_RESET_PORT, LCD_RESET_PIN, Bit_SET);
+    GPIO_WriteBit(GPIOB, LCD_RESET_PIN | LORA_RESET_PIN, Bit_SET);
 
 #if (DEBUG)
     USART_Printf_Init(115200);
@@ -949,9 +955,12 @@ int main(void)
     TIM_Cmd(DEBUG_LED_TIM, ENABLE);
     TIM_CtrlPWMOutputs(DEBUG_LED_TIM, ENABLE);
 
-    /* Apply safe defaults: enable AUX power, release LCD reset, set 50% brightness */
+    /* Apply safe defaults: enable AUX power, release LCD reset,
+     * release lora reset, set 50% brightness
+     */
     state.data.aux_power = 1;
     state.data.lcd_reset = 1;
+    state.data.lora_reset = 1;
     state.flag_update_outputs = 1;
     state.data.lcd_brightness = 50;
     state.data.led_brightness = 50;
@@ -987,6 +996,8 @@ int main(void)
             state.flag_update_outputs = 0;
             GPIO_WriteBit(AUX_POWER_PORT, AUX_POWER_PIN, state.data.aux_power ? Bit_SET : Bit_RESET);
             GPIO_WriteBit(LCD_RESET_PORT, LCD_RESET_PIN, state.data.lcd_reset ? Bit_SET : Bit_RESET);
+            GPIO_WriteBit(LORA_RESET_PORT, LORA_RESET_PIN, state.data.lora_reset ? Bit_SET : Bit_RESET);
+
             if (state.data.reboot)
             {
                 PRINT("Reboot to bootloader trigger\r\n");

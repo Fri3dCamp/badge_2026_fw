@@ -49,7 +49,8 @@ The button states are a 2-byte value with the following encoding:
 The output states are a 1-byte value with the following encoding:
 | Bit | Name |
 |-|-|
-| \[7:4\] | reserved |
+| \[7:5\] | reserved |
+| 4 | Lora reset (1 = release, 0 = held in reset) |
 | 3 | trigger remap of I2C to SWD for reflashing |
 | 2 | trigger reboot |
 | 1 | LCD Reset state |
