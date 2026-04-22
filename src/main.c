@@ -8,7 +8,7 @@
  * inputs/outputs through a single I2C slave interface (address 0x50):
  *
  *   Inputs (readable via I2C):
- *     - 2 multimeter analog inputs (AIN0, AIN1)
+ *     - multimeter analog input (AIN0)
  *     - Joystick (analog X/Y, plus derived digital up/down/left/right)
  *     - 5 buttons: X, A, B, Y, Menu (active LOW with pull-up)
  *     - Battery voltage monitor (ADC)
@@ -44,38 +44,33 @@
  * Analog input pin definitions.
  * RANK sets the order in which the ADC scans channels continuously.
  * DMA copies results into state.data.adc_channels[rank-1] in this order:
- *   [0] AIN1        — multimeter analog input 1 : PA0
- *   [1] AIN0        — multimeter analog input 0 : PA1
- *   [2] BATTERY     — battery voltage (via resistor divider) : PC0
- *   [3] USB_MONITOR — 5V USB rail (via resistor divider) : PC3
- *   [4] JOYSTICK_Y  — joystick Y axis : PA6
- *   [5] JOYSTICK_X  — joystick X axis : PA5
+ *   [0] AIN0        — multimeter analog input : PA0
+ *   [1] BATTERY     — battery voltage (via resistor divider) : PC0
+ *   [2] USB_MONITOR — 5V USB rail (via resistor divider) : PC3
+ *   [3] JOYSTICK_Y  — joystick Y axis : PA6
+ *   [4] JOYSTICK_X  — joystick X axis : PA5
  */
-#define AIN1_PORT               GPIOA // PA0: Ain1
-#define AIN1_PIN                GPIO_Pin_0
-#define AIN1_CHANNEL            ADC_Channel_0
-#define AIN1_RANK               (1)
-#define AIN0_PORT               GPIOA // PA1: Ain0
-#define AIN0_PIN                GPIO_Pin_1
-#define AIN0_CHANNEL            ADC_Channel_1
-#define AIN0_RANK               (2)
+#define AIN0_PORT               GPIOA // PA0: Ain0
+#define AIN0_PIN                GPIO_Pin_0
+#define AIN0_CHANNEL            ADC_Channel_0
+#define AIN0_RANK               (1)
 #define BATTERY_MONITOR_PORT    GPIOC // PC0: Battery Monitor
 #define BATTERY_MONITOR_PIN     GPIO_Pin_0
 #define BATTERY_MONITOR_CHANNEL ADC_Channel_10
-#define BATTERY_MONITOR_RANK    (3)
+#define BATTERY_MONITOR_RANK    (2)
 #define USB_MONITOR_PORT        GPIOC // PC3: USB Monitor
 #define USB_MONITOR_PIN         GPIO_Pin_3
 #define USB_MONITOR_CHANNEL     ADC_Channel_13
-#define USB_MONITOR_RANK        (4)
+#define USB_MONITOR_RANK        (3)
 #define JOYSTICK_Y_PORT         GPIOA // PA6: JoyY
 #define JOYSTICK_Y_PIN          GPIO_Pin_6
 #define JOYSTICK_Y_CHANNEL      ADC_Channel_6
-#define JOYSTICK_Y_RANK         (5)
+#define JOYSTICK_Y_RANK         (4)
 #define JOYSTICK_X_PORT         GPIOA // PA5: JoyX
 #define JOYSTICK_X_PIN          GPIO_Pin_5
 #define JOYSTICK_X_CHANNEL      ADC_Channel_5
-#define JOYSTICK_X_RANK         (6)
-#define ADC_CHANNELS            (6) /* total number of ADC channels scanned */
+#define JOYSTICK_X_RANK         (5)
+#define ADC_CHANNELS            (5) /* total number of ADC channels scanned */
 #define ADC_DMA_CHANNEL         DMA1_Channel1
 
 /* digital inputs */
@@ -151,10 +146,10 @@
  *   0x00     3    Firmware version [major, minor, patch]   (READ-ONLY)
  *   0x03     1    Padding (required for 4-byte alignment of ADC buffer)
  *   0x04     2    Button/input state (buttons_t bitmask)   (READ-ONLY)
- *   0x06    12    ADC channels[0..5] as uint16_t           (READ-ONLY)
- *   0x12     2    LCD backlight brightness (uint16, 0–100) (READ-WRITE)
- *   0x14     2    Debug LED brightness    (uint16, 0–100)  (READ-WRITE)
- *   0x16     1    Output flags: aux_power, lcd_reset, reboot (READ-WRITE)
+ *   0x06    10    ADC channels[0..4] as uint16_t           (READ-ONLY)
+ *   0x10     2    LCD backlight brightness (uint16, 0–100) (READ-WRITE)
+ *   0x12     2    Debug LED brightness    (uint16, 0–100)  (READ-WRITE)
+ *   0x14     1    Output flags                             (READ-WRITE)
  *
  * Total: RESULT_BUFFER_SIZE = 23 bytes.
  */
@@ -542,7 +537,7 @@ static void LED_PWM_DMA_Init(u32 memadr)
 
 /*
  * Initialize ADC1 in continuous scan mode with DMA.
- * All 6 analog channels are converted in a round-robin loop and written
+ * All 5 analog channels are converted in a round-robin loop and written
  * directly into state.data.adc_channels[] via DMA1_Channel1 (circular mode).
  * The ADC clock is divided by 16 for stable readings.
  * Results are right-aligned 12-bit values (0–4095).
@@ -554,7 +549,7 @@ static void ADC_MultiChannel_Init(void)
 
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_ADC1 | RCC_APB2Periph_GPIOA | RCC_APB2Periph_GPIOC, ENABLE);
 
-    GPIO_InitStructure.GPIO_Pin = JOYSTICK_X_PIN | JOYSTICK_Y_PIN | AIN0_PIN | AIN1_PIN;
+    GPIO_InitStructure.GPIO_Pin = JOYSTICK_X_PIN | JOYSTICK_Y_PIN | AIN0_PIN;
     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AIN;
     GPIO_Init(GPIOA, &GPIO_InitStructure);
 
@@ -580,12 +575,11 @@ static void ADC_MultiChannel_Init(void)
     ADC_Init(ADC1, &ADC_InitStructure);
 
     // configure the ADC channels
+    ADC_RegularChannelConfig(ADC1, AIN0_CHANNEL, AIN0_RANK, ADC_SampleTime_11Cycles);
     ADC_RegularChannelConfig(ADC1, BATTERY_MONITOR_CHANNEL, BATTERY_MONITOR_RANK, ADC_SampleTime_11Cycles);
     ADC_RegularChannelConfig(ADC1, USB_MONITOR_CHANNEL, USB_MONITOR_RANK, ADC_SampleTime_11Cycles);
     ADC_RegularChannelConfig(ADC1, JOYSTICK_Y_CHANNEL, JOYSTICK_Y_RANK, ADC_SampleTime_11Cycles);
     ADC_RegularChannelConfig(ADC1, JOYSTICK_X_CHANNEL, JOYSTICK_X_RANK, ADC_SampleTime_11Cycles);
-    ADC_RegularChannelConfig(ADC1, AIN0_CHANNEL, AIN0_RANK, ADC_SampleTime_11Cycles);
-    ADC_RegularChannelConfig(ADC1, AIN1_CHANNEL, AIN1_RANK, ADC_SampleTime_11Cycles);
 
     ADC_DMACmd(ADC1, ENABLE);
     ADC_Cmd(ADC1, ENABLE);

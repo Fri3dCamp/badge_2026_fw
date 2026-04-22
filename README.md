@@ -19,15 +19,14 @@ The expander has I2C address `0x50` and uses the following registers to interfac
 |-|-|-|-|-|
 | 0x00 | Version number | R | 3 | Reports the firmware version number |
 | 0x04 | Button states | R | 2 | Reports the button states (see below) |
-| 0x06 | DMM AIN1 | R | 2 | DMM AIN1 analog value (0-4096) |
-| 0x08 | DMM AIN0 | R | 2 | DMM AIN0 analog value (0-4096) |
-| 0x0a | Battery monitor | R | 2 | Battery voltage analog value (0-4096) (1) |
-| 0x0c | USB voltage | R | 2 | USB voltage (0-4096) (1) |
-| 0x0e | Joystick Y | R | 2 | Joystick Y-axis analog value (0-4096) |
-| 0x10 | Joystick X | R | 2 | Joystick X-axis analog value (0-4096) |
-| 0x12 | LCD brightness | R/W | 2 | LCD brightness value (0-100) |
-| 0x06 | Debug LED | R/W | 2 | debug LED brightness (0-100) |
-| 0x08 | Digital outputs | R/W | 1 | digital output state (see blow) |
+| 0x06 | Digital multimeter AIN0 | R | 2 | Digital multimeter AIN0 analog value (0-4096) |
+| 0x08 | Battery monitor | R | 2 | Battery voltage analog value (0-4096) (1) |
+| 0x0a | USB voltage | R | 2 | USB voltage (0-4096) (1) |
+| 0x0c | Joystick Y | R | 2 | Joystick Y-axis analog value (0-4096) |
+| 0x0e | Joystick X | R | 2 | Joystick X-axis analog value (0-4096) |
+| 0x10 | LCD brightness | R/W | 2 | LCD brightness value (0-100) |
+| 0x12 | Debug LED | R/W | 2 | debug LED brightness (0-100) |
+| 0x14 | Digital outputs | R/W | 1 | digital output state (see blow) |
  1. be aware that the full range of 0-4095 will not be used since there is a voltage divider used.
 
 The button states are a 2-byte value with the following encoding:
@@ -50,8 +49,9 @@ The button states are a 2-byte value with the following encoding:
 The output states are a 1-byte value with the following encoding:
 | Bit | Name |
 |-|-|
-| \[7:3\] | reserved |
-| 2 | trigger reboot to bootloader* |
+| \[7:4\] | reserved |
+| 3 | trigger remap of I2C to SWD for reflashing |
+| 2 | trigger reboot |
 | 1 | LCD Reset state |
 | 0 | AUX 3v3 state |
 
