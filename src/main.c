@@ -220,8 +220,11 @@ typedef struct
     uint8_t flag_update_outputs : 1;       /* set when aux_power/lcd_reset/reboot were written via I2C */
     uint8_t flag_button_scan_halfway : 1;  /* set at the halfway point of a debounce cycle (used to clear the interrupt line) */
     uint8_t flag_button_state_changed : 1; /* set when a stable button state change is detected */
-    uint8_t reserved : 5;                  /* reserved for future use */
-    uint8_t raw_data_ptr;                  /* byte offset for the next I2C read or write */
+    uint8_t flag_slave_first_write : 1;    /* set on every ADDR phase; the next RXNE byte is the register offset. */
+    uint8_t reserved : 4;                  /* reserved for future use */
+    uint8_t slave_offset;                  /* register offset captured after the most recent ADDR+W. */
+    uint8_t slave_position;                /* current read/write cursor, reset to offset on every ADDR (including repeated-START), so write-then-read works without special-casing. */
+    uint8_t unused;
     union
     {
         addon_data_t data;                    /* structured access to the register map */
@@ -615,37 +618,6 @@ static void DMA_Tx_Init(DMA_Channel_TypeDef *DMA_CHx, uint32_t peripheralAddress
     DMA_Init(DMA_CHx, &DMA_InitStructure);
 }
 
-/* clear the various error flags that may block further communication */
-static void I2C1_ClearErrorFlags(void)
-{
-
-    /* I2C_FLAG_AF - Acknowledge failure flag */
-    if (I2C_GetFlagStatus(I2C1, I2C_FLAG_AF) != RESET)
-    {
-        I2C_ClearFlag(I2C1, I2C_FLAG_AF);
-    }
-    /* I2C_FLAG_BERR -Bus Error flag.*/
-    if (I2C_GetFlagStatus(I2C1, I2C_FLAG_BERR) != RESET)
-    {
-        I2C_ClearFlag(I2C1, I2C_FLAG_BERR);
-    }
-}
-
-/* clear the stop flag */
-static void I2C1_ClearStopFlag(void)
-{
-    if (I2C_GetFlagStatus(I2C1, I2C_FLAG_STOPF) != RESET)
-    {
-        /* Stop detection flag (Slave mode).
-         * STOPF (STOP detection) is cleared by software sequence: a read operation
-         * to I2C_STAR1 register (I2C_GetFlagStatus()) followed by a write operation
-         * to I2C_CTLR1 register (I2C_Cmd() to re-enable the I2C peripheral).
-         * -> Since we just read the flag, we only need to (re-)enable.
-         * */
-        I2C_Cmd(I2C1, ENABLE);
-    }
-}
-
 /*
  * Trigger a reboot into the WCH USB bootloader.
  * SystemReset_StartMode(Start_Mode_BOOT) sets a flag that tells the bootrom
@@ -657,30 +629,10 @@ static void reset_to_bootloader(void)
     NVIC_SystemReset();
 }
 
-/**
- * Drain up to 'size' bytes from the I2C receive FIFO into 'data'.
- * Stops early if the RXNE flag clears (no more bytes available) or on timeout.
- *
- * @param  data  destination buffer
- * @param  size  maximum number of bytes to read
- * @return number of bytes actually read
- */
-static int i2c_slave_read(uint8_t *data, uint16_t size)
+static int i2c_pos_is_writable(uint8_t pos)
 {
-    uint8_t i = 0;
-    uint32_t tickstart = SysTick->CNT;
-
-    while (i < size && I2C_GetFlagStatus(I2C1, I2C_FLAG_RXNE) != RESET)
-    {
-        data[i++] = I2C_ReceiveData(I2C1);
-        if ((SysTick->CNT - tickstart) >= I2C_TIMEOUT_TICK)
-        {
-            PRINT("Read timeout\r\n");
-            // ret = I2C_TIMEOUT;
-            // break; /* TODO: enable this to actually abort on timeout */
-        }
-    }
-    return i;
+    if (pos >= PWM_LCD_OFFSET && pos < PWM_LCD_OFFSET + 2 + 2 + 1) return 1;
+    return 0;
 }
 
 /**
@@ -692,7 +644,7 @@ static int i2c_slave_read(uint8_t *data, uint16_t size)
  * Protocol (read transaction — master sets register first, then re-reads):
  *   START | ADDR+W | reg_offset | START | ADDR+R | [data bytes from reg_offset onwards...] | STOP
  *
- * The first byte of every write sets raw_data_ptr (the register address).
+ * The first byte of every write sets state.slave_position (the register address).
  * Subsequent bytes are interpreted based on that address:
  *   - PWM_LCD_OFFSET  → next 2 bytes set lcd_brightness (uint16_t); DMA updates PWM automatically
  *   - PWM_LED_OFFSET  → next 2 bytes set led_brightness (uint16_t); DMA updates PWM automatically
@@ -700,133 +652,83 @@ static int i2c_slave_read(uint8_t *data, uint16_t size)
  *   - any other addr  → write is rejected; remaining RXNE bytes are drained and discarded
  *
  * On TXE (master is reading): bytes are sent sequentially from raw_data[] starting at
- * raw_data_ptr, advancing the pointer with each byte sent.
+ * state.slave_position, advancing the pointer with each byte sent.
+ *
+ * Reading STAR2 clears the ADDR flag as a hardware side-effect.
+ * This releases the clock when clock stretching is enabled
  */
 static void i2c_slave_process(void)
 {
-    /* Process incoming and outgoing I2C data.
-     * When processing the data we can assume there is an address match.
-     * We could wait for an address match, but that would be blocking
-     * and isn't needed as RX/TX-flags are only set when addressed properly.
-     */
+    uint32_t flag1 = 0, flag2 = 0;
+    flag1 = I2C1->STAR1;
 
-    /* Process receiving data */
-    if (I2C_GetFlagStatus(I2C1, I2C_FLAG_RXNE) != RESET)
+    if (flag1 & I2C_STAR1_ADDR)
     {
-        /* Data register not empty (Receiver) flag:
-         * the first byte received after address+W is the register offset.
-         * Subsequent payload bytes are read inside each case below.
+        state.slave_position = state.slave_offset;
+        state.flag_slave_first_write = 1;
+    }
+
+    /* Data register not empty (Receiver) flag */
+    if (flag1 & I2C_STAR1_RXNE)
+    {
+        uint8_t byte = I2C_ReceiveData(I2C1);
+        /* the first byte received after address+W is the register offset.
+         * Subsequent payload bytes are read and written if the memory area
+         * is writeable.
          */
-        state.raw_data_ptr = I2C_ReceiveData(I2C1);
-        PRINT("address 0x%02x\r\n", state.raw_data_ptr);
-        switch (state.raw_data_ptr)
+        if (state.flag_slave_first_write)
         {
-            case PWM_LCD_OFFSET: {
-                /* Read 2 payload bytes (little-endian uint16) into lcd_brightness.
-                 * The DMA-driven CCR trick means the PWM duty cycle updates
-                 * automatically on the next timer Update event — no extra code needed.
-                 */
-                uint16_t new_value;
-                int ret = i2c_slave_read((uint8_t *)(&new_value), 2);
-                state.raw_data_ptr += ret;
-                if (ret == 2)
+            state.slave_offset = byte;
+            state.slave_position = byte;
+            state.flag_slave_first_write = 0;
+            PRINT("I2C reg: 0x%02x\r\n", byte);
+        }
+        else
+        {
+            if (i2c_pos_is_writable(state.slave_position))
+            {
+                state.raw_data[state.slave_position] = byte;
+                if (state.slave_position == OUTPUTS_OFFSET)
                 {
-                    state.data.lcd_brightness = new_value; // DMA will set the new value automatically
+                    /* notify the main loop that the config has changed */
+                    state.flag_update_outputs = 1;
                 }
-                break;
             }
-            case PWM_LED_OFFSET: {
-                /* Read 2 payload bytes (little-endian uint16) into led_brightness.
-                 * Same DMA-driven CCR mechanism as lcd_brightness above.
-                 */
-                uint16_t new_value;
-                int ret = i2c_slave_read((uint8_t *)(&new_value), 2);
-                state.raw_data_ptr += ret;
-                if (ret == 2)
-                {
-                    state.data.led_brightness = new_value; // DMA will set the new value automatically
-                }
-                break;
-            }
-            case OUTPUTS_OFFSET: {
-                /* Read 1 payload byte into the outputs register.
-                 * Raise flag_update_outputs so the main loop applies the new
-                 * aux_power / lcd_reset / reboot bit-fields to the GPIO pins.
-                 */
-                uint8_t new_value;
-                int ret = i2c_slave_read((uint8_t *)(&new_value), 1);
-                state.raw_data_ptr += ret;
-                if (ret == 1)
-                {
-                    state.raw_data[OUTPUTS_OFFSET] = new_value;
-                    state.flag_update_outputs = 1; // set the flag to update the outputs
-                }
-                break;
-            }
-            default: {
-                /* Unknown / read-only register: drain and discard any remaining bytes
-                 * so the I2C peripheral doesn't stall with a full receive buffer.
-                 */
-                while (I2C_GetFlagStatus(I2C1, I2C_FLAG_RXNE) != RESET)
-                {
-#if (DEBUG)
-                    PRINT("received %x\r\n", I2C_ReceiveData(I2C1));
-#else
-                    I2C_ReceiveData(I2C1);
-#endif
-                }
-                PRINT("we do not allow writing to offset 0x%02x\r\n", state.raw_data_ptr);
-            }
+            state.slave_position++;
+        }
+    }
+
+    /* Process transmitting data (master is reading from us).
+     * Send one byte from raw_data[] at the current pointer position and advance
+     * the pointer so consecutive TXE interrupts walk through the register file.
+     * If slave_position is out of range, send 0x00 as a safe dummy byte.
+     */
+    if (flag1 & I2C_STAR1_TXE)
+    {
+        if (state.slave_position < RESULT_BUFFER_SIZE)
+        {
+            I2C_SendData(I2C1, state.raw_data[state.slave_position++]);
+        }
+        else
+        {
+            /* send dummy data */
+            I2C_SendData(I2C1, 0x00);
         }
     }
 
     /* Detect STOP condition — the master has finished its write transaction.
      * Clear the stop flag so the peripheral is ready for the next transaction.
      */
-    if (I2C_CheckEvent(I2C1, I2C_EVENT_SLAVE_STOP_DETECTED))
-    { // When done receiving let's do the callback
-        // Note: twi.c::i2c_onSlaveReceive is tied to the TwoWire::onReceiveService().
-        PRINT("all data received\r\n");
-
-        // clear the stop flag to be ready for another session
-        I2C1_ClearStopFlag();
-    }
-
-    /* Process transmitting data (master is reading from us).
-     * Send one byte from raw_data[] at the current pointer position and advance
-     * the pointer so consecutive TXE interrupts walk through the register file.
-     * If raw_data_ptr is out of range, send 0x00 as a safe dummy byte.
-     */
-    if (I2C_GetFlagStatus(I2C1, I2C_FLAG_TXE) != RESET)
+    if (flag1 & I2C_STAR1_STOPF)
     {
-        /* Data register empty flag (Transmitter).
-         * It seems we need to send something
-         */
-        if (state.raw_data_ptr < RESULT_BUFFER_SIZE)
-        {
-            PRINT("sending\r\n");
-            I2C_SendData(I2C1, state.raw_data[state.raw_data_ptr++]); // send register value to master
-        }
-        else
-        {
-            PRINT("ERROR: reading dummy data\r\n");
-            I2C_SendData(I2C1, 0x00); // send dummy data to master
-        }
+        PRINT("I2C STOP\r\n");
+        /* writing CTLR1 after reading STAR1 clears STOPF */
+        I2C1->CTLR1 &= ~(I2C_CTLR1_STOP);
     }
 
-    // just for debugging
-    if (I2C_CheckEvent(I2C1, I2C_EVENT_SLAVE_BYTE_TRANSMITTED))
-    {
-        PRINT("Master acked received byte (I2C_EVENT_SLAVE_BYTE_TRANSMITTED)\r\n");
-    }
-
-    if (I2C_CheckEvent(I2C1, I2C_EVENT_SLAVE_ACK_FAILURE))
-    {
-        PRINT("Master stopped receiving (I2C_EVENT_SLAVE_ACK_FAILURE)\r\n");
-    }
-
-    /* Clear error flags (since we don't handle them anyways) */
-    I2C1_ClearErrorFlags();
+    // clock stretching: release the clock
+    flag2 = I2C1->STAR2;
+    (void)flag2;
 }
 
 /**
@@ -1171,11 +1073,12 @@ void I2C1_EV_IRQHandler(void)
     i2c_slave_process();
 }
 
-/* I2C1 Error — error flags are cleared inside i2c_slave_process(), so
- * nothing extra needs to be done here.
- */
+/* I2C1 Error — clear whichever error flag fired so the bus is not blocked. */
 void I2C1_ER_IRQHandler(void) __attribute__((interrupt));
 void I2C1_ER_IRQHandler(void)
 {
-    // do nothing here
+    uint16_t STAR1 = I2C1->STAR1;
+    if (STAR1 & I2C_STAR1_BERR) I2C1->STAR1 &= ~I2C_STAR1_BERR;
+    if (STAR1 & I2C_STAR1_ARLO) I2C1->STAR1 &= ~I2C_STAR1_ARLO;
+    if (STAR1 & I2C_STAR1_AF) I2C1->STAR1 &= ~I2C_STAR1_AF;
 }
