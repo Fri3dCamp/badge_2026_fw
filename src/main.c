@@ -203,7 +203,7 @@ typedef struct __attribute__((packed))
     uint8_t aux_power : 1;               /* 1 = enable the AUX power rail — READ-WRITE */
     uint8_t lcd_reset : 1;               /* 1 = release LCD from reset (0 = held in reset) — READ-WRITE */
     uint8_t reboot : 1;                  /* write 1 to trigger a reboot into the bootloader — READ-WRITE */
-    uint8_t remap : 1;                   /* write 1 to remap the SWD to the I2C pins */
+    uint8_t remap : 1;                   /* write 1 to remap the SWD to the I2C pins — READ-WRITE */
     uint8_t lora_reset : 1;              /* 1 = release Lora module from reset (0 = held in reset) — READ-WRITE */
     uint8_t output_reserved : 3;
 } addon_data_t;
@@ -217,7 +217,7 @@ _Static_assert(sizeof(addon_data_t) == RESULT_BUFFER_SIZE, "raw data and struct 
  */
 typedef struct
 {
-    uint8_t flag_update_outputs : 1;       /* set when aux_power/lcd_reset/reboot were written via I2C */
+    uint8_t flag_update_outputs : 1;       /* set when aux_power/lcd_reset/reboot/remap/lora_reset were written via I2C */
     uint8_t flag_button_scan_halfway : 1;  /* set at the halfway point of a debounce cycle (used to clear the interrupt line) */
     uint8_t flag_button_state_changed : 1; /* set when a stable button state change is detected */
     uint8_t flag_slave_first_write : 1;    /* set on every ADDR phase; the next RXNE byte is the register offset. */
