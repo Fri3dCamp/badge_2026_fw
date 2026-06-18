@@ -760,7 +760,7 @@ static buttons_t read_buttons(void)
         res.charger_charging = 1;
     }
 
-    if ((a & CHARGER_STANDBY_PIN) == (uint32_t)Bit_RESET)
+    if ((b & CHARGER_STANDBY_PIN) == (uint32_t)Bit_RESET)
     {
         res.charger_standby = 1;
     }
