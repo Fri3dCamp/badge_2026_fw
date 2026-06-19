@@ -150,6 +150,7 @@
  *   0x00     3    Firmware version [major, minor, patch]   (READ-ONLY)
  *   0x03     1    Padding (required for 4-byte alignment of ADC buffer)
  *   0x04     2    Button/input state (buttons_t bitmask)   (READ-ONLY)
+ *   0x06     2    Padding to keep backwards compatibility  (READ-ONLY)
  *   0x08    10    ADC channels[0..4] as uint16_t           (READ-ONLY)
  *   0x12     2    LCD backlight brightness (uint16, 0–100) (READ-WRITE)
  *   0x14     2    Debug LED brightness    (uint16, 0–100)  (READ-WRITE)
