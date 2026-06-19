@@ -23,14 +23,14 @@ The expander has I2C address `0x50` and uses the following registers to interfac
 |-|-|-|-|-|
 | 0x00 | Version number | R | 3 | Reports the firmware version number |
 | 0x04 | Button states | R | 2 | Reports the button states (see below) |
-| 0x06 | Digital multimeter AIN0 | R | 2 | Digital multimeter AIN0 analog value (0-4096) |
-| 0x08 | Battery monitor | R | 2 | Battery voltage analog value (0-4096) (1) |
-| 0x0a | USB voltage | R | 2 | USB voltage (0-4096) (1) |
-| 0x0c | Joystick Y | R | 2 | Joystick Y-axis analog value (0-4096) |
-| 0x0e | Joystick X | R | 2 | Joystick X-axis analog value (0-4096) |
-| 0x10 | LCD brightness | R/W | 2 | LCD brightness value (0-100) |
-| 0x12 | Debug LED | R/W | 2 | debug LED brightness (0-100) |
-| 0x14 | Digital outputs | R/W | 1 | digital output state (see blow) |
+| 0x08 | Digital multimeter AIN0 | R | 2 | Digital multimeter AIN0 analog value (0-4096) |
+| 0x0A | Battery monitor | R | 2 | Battery voltage analog value (0-4096) (1) |
+| 0x0C | USB voltage | R | 2 | USB voltage (0-4096) (1) |
+| 0x0E | Joystick Y | R | 2 | Joystick Y-axis analog value (0-4096) |
+| 0x10 | Joystick X | R | 2 | Joystick X-axis analog value (0-4096) |
+| 0x12 | LCD brightness | R/W | 2 | LCD brightness value (0-100) |
+| 0x14 | Debug LED | R/W | 2 | debug LED brightness (0-100) |
+| 0x16 | Digital outputs | R/W | 1 | digital output state (see blow) |
  1. be aware that the full range of 0-4095 will not be used since there is a voltage divider used.
 
 The button states are a 2-byte value with the following encoding:
@@ -100,43 +100,43 @@ pin_interrupt.irq(trigger=Pin.IRQ_RISING, handler=callback)
 
 expander_i2c = I2C(sda=Pin(39), scl=Pin(42), freq=400000)
 # read the version:
-print("version:", expander_i2c.readfrom_mem(ADDRESS, 0, 3).hex())
+print("version:", expander_i2c.readfrom_mem(ADDRESS, 0x00, 3).hex())
 
 # read the analog state
-print("analog channels:", struct.unpack("<HHHHH", expander_i2c.readfrom_mem(ADDRESS, 6, 10)))
+print("analog channels:", struct.unpack("<HHHHH", expander_i2c.readfrom_mem(ADDRESS, 0x08, 10)))
 
 # read the debug led state
-print("debug LED PWM:", struct.unpack("<H", expander_i2c.readfrom_mem(ADDRESS, 18, 2)))
-print("LCD backlight PWM:", struct.unpack("<H", expander_i2c.readfrom_mem(ADDRESS, 16, 2)))
+print("debug LED PWM:", struct.unpack("<H", expander_i2c.readfrom_mem(ADDRESS, 0x14, 2)))
+print("LCD backlight PWM:", struct.unpack("<H", expander_i2c.readfrom_mem(ADDRESS, 0x12, 2)))
 
 # set the LCD brightness to 50%
-expander_i2c.writeto_mem(ADDRESS, 16, struct.pack("<H", 50))
+expander_i2c.writeto_mem(ADDRESS, 0x12, struct.pack("<H", 50))
 
 # read the LCD brightness
-print("LCD backlight PWM:", struct.unpack("<H", expander_i2c.readfrom_mem(ADDRESS, 16, 2)))
+print("LCD backlight PWM:", struct.unpack("<H", expander_i2c.readfrom_mem(ADDRESS, 0x12, 2)))
 
 # fade the debug LED up and down
 for i in range (100):
-    expander_i2c.writeto_mem(ADDRESS, 18, struct.pack("<H", i))
+    expander_i2c.writeto_mem(ADDRESS, 0x14, struct.pack("<H", i))
     time.sleep(.1)
 for i in range (100, 0, -1):
-    expander_i2c.writeto_mem(ADDRESS, 18, struct.pack("<H", i))
+    expander_i2c.writeto_mem(ADDRESS, 0x14, struct.pack("<H", i))
     time.sleep(.1)
 
 # turn off 3v3 aux
-expander_i2c.writeto_mem(ADDRESS, 20, b'\x00')
+expander_i2c.writeto_mem(ADDRESS, 0x16, b'\x00')
 
 # turn on 3v3 aux
-expander_i2c.writeto_mem(ADDRESS, 20, b'\x01')
+expander_i2c.writeto_mem(ADDRESS, 0x16, b'\x01')
 
 # trigger a reboot to bootloader
-expander_i2c.writeto_mem(ADDRESS, 20, b'\x04')
+expander_i2c.writeto_mem(ADDRESS, 0x16, b'\x04')
 
 # trigger a remap of the i2c pins
-expander_i2c.writeto_mem(ADDRESS, 20, b'\x10')
+expander_i2c.writeto_mem(ADDRESS, 0x16, b'\x10')
 
 # release the reset pin of the LORA chip
-expander_i2c.writeto_mem(ADDRESS, 20, b'\x20')
+expander_i2c.writeto_mem(ADDRESS, 0x16, b'\x20')
 
 ```
 

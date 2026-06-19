@@ -150,16 +150,16 @@
  *   0x00     3    Firmware version [major, minor, patch]   (READ-ONLY)
  *   0x03     1    Padding (required for 4-byte alignment of ADC buffer)
  *   0x04     2    Button/input state (buttons_t bitmask)   (READ-ONLY)
- *   0x06    10    ADC channels[0..4] as uint16_t           (READ-ONLY)
- *   0x10     2    LCD backlight brightness (uint16, 0–100) (READ-WRITE)
- *   0x12     2    Debug LED brightness    (uint16, 0–100)  (READ-WRITE)
- *   0x14     1    Output flags                             (READ-WRITE)
+ *   0x08    10    ADC channels[0..4] as uint16_t           (READ-ONLY)
+ *   0x12     2    LCD backlight brightness (uint16, 0–100) (READ-WRITE)
+ *   0x14     2    Debug LED brightness    (uint16, 0–100)  (READ-WRITE)
+ *   0x16     1    Output flags: aux_power, lcd_reset, reboot (READ-WRITE)
  *
  * Total: RESULT_BUFFER_SIZE = 23 bytes.
  */
 #define BUTTON_SIZE        (2) /* sizeof(buttons_t) */
-#define RESULT_BUFFER_SIZE (3 + 1 + BUTTON_SIZE + (ADC_CHANNELS * 2) + 2 + 2 + 1)
-#define PWM_LCD_OFFSET     (3 + 1 + BUTTON_SIZE + (ADC_CHANNELS * 2)) /* byte offset of lcd_brightness */
+#define RESULT_BUFFER_SIZE (3 + 1 + BUTTON_SIZE + 2 + (ADC_CHANNELS * 2) + 2 + 2 + 1)
+#define PWM_LCD_OFFSET     (3 + 1 + BUTTON_SIZE + 2 + (ADC_CHANNELS * 2)) /* byte offset of lcd_brightness */
 #define PWM_LED_OFFSET     (PWM_LCD_OFFSET + 2)                       /* byte offset of led_brightness */
 #define OUTPUTS_OFFSET     (PWM_LED_OFFSET + 2)                       /* byte offset of output flags */
 
@@ -197,6 +197,7 @@ typedef struct __attribute__((packed))
     uint8_t version[3];                  /* firmware version [major, minor, patch] — READ-ONLY */
     uint8_t unused;                      /* alignment padding: keeps adc_channels[] at a 4-byte boundary */
     buttons_t inputs;                    /* all button/joystick/USB/charger states — READ-ONLY */
+    uint16_t unused2;                    /* to keep backwards compatibility */
     uint16_t adc_channels[ADC_CHANNELS]; /* raw 12-bit ADC values, written by DMA — READ-ONLY */
     uint16_t lcd_brightness;             /* LCD backlight duty cycle 0–100; DMA copies to TIM1 CCR — READ-WRITE */
     uint16_t led_brightness;             /* debug LED duty cycle 0–100; DMA copies to TIM2 CCR — READ-WRITE */
