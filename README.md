@@ -133,10 +133,10 @@ expander_i2c.writeto_mem(ADDRESS, 0x16, b'\x01')
 expander_i2c.writeto_mem(ADDRESS, 0x16, b'\x04')
 
 # trigger a remap of the i2c pins
-expander_i2c.writeto_mem(ADDRESS, 0x16, b'\x10')
+expander_i2c.writeto_mem(ADDRESS, 0x16, b'\x08')
 
 # release the reset pin of the LORA chip
-expander_i2c.writeto_mem(ADDRESS, 0x16, b'\x20')
+expander_i2c.writeto_mem(ADDRESS, 0x16, b'\x0A')
 
 ```
 
