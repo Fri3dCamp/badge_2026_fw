@@ -938,6 +938,16 @@ int main(void)
     DMA_Cmd(ADC_DMA_CHANNEL, ENABLE);
     ADC_SoftwareStartConvCmd(ADC1, ENABLE);
 
+    /* Apply safe defaults: enable AUX power, release LCD reset,
+     * release lora reset, set 50% brightness
+     */
+    state.data.aux_power = 1;
+    state.data.lcd_reset = 1;
+    state.data.lora_reset = 1;
+    state.flag_update_outputs = 1;
+    state.data.lcd_brightness = 50;
+    state.data.led_brightness = 50;
+    
     /* configure the LCD backlight PWM output using DMA:
      *   The timer Update event triggers DMA to copy state.data.lcd_brightness
      *   into the compare register (CCR), so the duty cycle tracks the variable
@@ -955,16 +965,6 @@ int main(void)
     TIM_DMACmd(DEBUG_LED_TIM, TIM_DMA_Update, ENABLE);
     TIM_Cmd(DEBUG_LED_TIM, ENABLE);
     TIM_CtrlPWMOutputs(DEBUG_LED_TIM, ENABLE);
-
-    /* Apply safe defaults: enable AUX power, release LCD reset,
-     * release lora reset, set 50% brightness
-     */
-    state.data.aux_power = 1;
-    state.data.lcd_reset = 1;
-    state.data.lora_reset = 1;
-    state.flag_update_outputs = 1;
-    state.data.lcd_brightness = 50;
-    state.data.led_brightness = 50;
 
     PRINT("Expander Init done\r\n");
 
