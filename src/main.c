@@ -682,7 +682,6 @@ static void i2c_slave_process(void)
             state.slave_offset = byte;
             state.slave_position = byte;
             state.flag_slave_first_write = 0;
-            PRINT("I2C reg: 0x%02x\r\n", byte);
         }
         else
         {
@@ -722,7 +721,6 @@ static void i2c_slave_process(void)
      */
     if (flag1 & I2C_STAR1_STOPF)
     {
-        PRINT("I2C STOP\r\n");
         /* writing CTLR1 after reading STAR1 clears STOPF */
         I2C1->CTLR1 &= ~(I2C_CTLR1_STOP);
     }
