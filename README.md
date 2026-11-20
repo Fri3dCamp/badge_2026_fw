@@ -62,6 +62,11 @@ The output states are a 1-byte value with the following encoding:
 | 1 | LCD Reset state |
 | 0 | AUX 3v3 state |
 
+The AUX 3V3 rail powers most peripherals of the badge, including the joystick. While it is switched off (bit 0
+cleared) and during 50 ms after it is switched on again, the button and joystick bits in the button state register
+are not updated: they are derived from dummy values (released, centered). The ADC registers, including the joystick,
+keep being sampled, and the charger and USB states keep being updated.
+
 ## Building
 
 Use [platformio](https://platformio.org) to build this project. You should install the [ch32v platform package](https://github.com/Community-PIO-CH32V/platform-ch32v) as well. If you use the command line, build using:

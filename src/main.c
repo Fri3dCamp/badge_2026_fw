@@ -37,6 +37,7 @@
  */
 
 #include <ch32x035.h> /* both X033 and X035 */
+#include <stddef.h>   /* offsetof() */
 #include <stdlib.h>   /* atoi() */
 #include <string.h>   /* memset() */
 
@@ -138,6 +139,13 @@
 #define JOYSTICK_THRESHOLD_TOP    (3000)
 #define JOYSTICK_THRESHOLD_BOTTOM (1000)
 #define USB_VOLTAGE_THRESHOLD     (3000)
+#define JOYSTICK_CENTER           (2048) /* joystick value used while the AUX rail is off */
+
+/* TIM3 ticks (10 ms) to wait after the AUX rail is switched on before the
+ * buttons and joystick are scanned again, so the rail and the joystick
+ * readings can settle.
+ */
+#define AUX_SETTLE_TICKS (5)
 
 /* TIM3 auto-reload value for a 100 Hz interrupt used for button debounce timing */
 #define TIMER_FREQ ((SystemCoreClock / 10000) - 1)
@@ -223,10 +231,11 @@ typedef struct
     uint8_t flag_button_scan_halfway : 1;  /* set at the halfway point of a debounce cycle (used to clear the interrupt line) */
     uint8_t flag_button_state_changed : 1; /* set when a stable button state change is detected */
     uint8_t flag_slave_first_write : 1;    /* set on every ADDR phase; the next RXNE byte is the register offset. */
-    uint8_t reserved : 4;                  /* reserved for future use */
+    uint8_t inputs_suspended : 1;          /* AUX rail is off: buttons and joystick are not scanned */
+    uint8_t reserved : 3;                  /* reserved for future use */
     uint8_t slave_offset;                  /* register offset captured after the most recent ADDR+W. */
     uint8_t slave_position;                /* current read/write cursor, reset to offset on every ADDR (including repeated-START), so write-then-read works without special-casing. */
-    uint8_t unused;
+    uint8_t aux_settle_ticks;              /* TIM3 ticks left before scanning resumes after the AUX rail is switched on */
     union
     {
         addon_data_t data;                    /* structured access to the register map */
@@ -236,6 +245,9 @@ typedef struct
 
 /* global state variable */
 static addon_state_t state;
+
+/* The DMA writes the ADC results into the register map: keep them 4-byte aligned */
+_Static_assert(offsetof(addon_state_t, data.adc_channels) % 4 == 0, "ADC buffer is not 4-byte aligned!");
 
 /*
  * Configure AUX_POWER (PB6), LCD_RESET (PB11), and INT_OUTPUT (PC17) as
@@ -739,6 +751,23 @@ static void i2c_slave_process(void)
 }
 
 /**
+ * React to the AUX rail being switched off or on (main loop context).
+ *
+ * The buttons and joystick are powered by the AUX rail: while it is off (and
+ * shortly after it is switched on again) read_buttons() uses dummy values for
+ * them, so their state is not updated.
+ */
+static void aux_power_changed(uint8_t on)
+{
+    if (on)
+    {
+        /* keep using dummy values until the rail and the joystick readings have settled */
+        state.aux_settle_ticks = AUX_SETTLE_TICKS;
+    }
+    state.inputs_suspended = !on;
+}
+
+/**
  * Sample all inputs and return a snapshot as a buttons_t struct.
  *
  * GPIO buttons (GPIOA/B/C) are active-LOW with internal pull-ups, so a pin
@@ -759,6 +788,18 @@ static buttons_t read_buttons(void)
     uint16_t joy_x = state.data.adc_channels[JOYSTICK_X_RANK - 1];
     uint16_t joy_y = state.data.adc_channels[JOYSTICK_Y_RANK - 1];
     uint16_t usb_voltage = state.data.adc_channels[USB_MONITOR_RANK - 1];
+
+    /* The buttons and joystick are powered by the AUX rail: while it is off or
+     * settling, use dummy values (released, centered) so their state is not
+     * updated. The charger and USB states are still read.
+     */
+    if (state.inputs_suspended || state.aux_settle_ticks)
+    {
+        b |= BUTTON_X_PIN | BUTTON_A_PIN | BUTTON_B_PIN | BUTTON_Y_PIN;
+        c |= BUTTON_MENU_PIN;
+        joy_x = JOYSTICK_CENTER;
+        joy_y = JOYSTICK_CENTER;
+    }
 
     // TODO: check polarities
 
@@ -851,6 +892,11 @@ static void Button_Scan(void)
 {
     static uint8_t scan_cnt = 0;
     static buttons_t previous_button_state = {0};
+
+    if (state.aux_settle_ticks)
+    {
+        state.aux_settle_ticks--;
+    }
 
     scan_cnt++;
     if ((scan_cnt % 10) == 0) // every 100ms — second sample
@@ -973,6 +1019,9 @@ int main(void)
     state.data.lcd_brightness = 50;
     state.data.led_brightness = 50;
 
+    /* AUX rail state as last applied, it is on at boot (pull-up on the LDO enable) */
+    uint8_t aux_on = 1;
+
     PRINT("Expander Init done\r\n");
 
     /* Main event loop — all heavy lifting is done in ISRs and DMA;
@@ -1002,6 +1051,11 @@ int main(void)
         if (state.flag_update_outputs)
         {
             state.flag_update_outputs = 0;
+            if (state.data.aux_power != aux_on)
+            {
+                aux_on = state.data.aux_power;
+                aux_power_changed(aux_on);
+            }
             GPIO_WriteBit(AUX_POWER_PORT, AUX_POWER_PIN, state.data.aux_power ? Bit_SET : Bit_RESET);
             GPIO_WriteBit(LCD_RESET_PORT, LCD_RESET_PIN, state.data.lcd_reset ? Bit_SET : Bit_RESET);
             GPIO_WriteBit(LORA_RESET_PORT, LORA_RESET_PIN, state.data.lora_reset ? Bit_SET : Bit_RESET);
