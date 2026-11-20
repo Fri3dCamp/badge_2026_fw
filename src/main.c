@@ -224,18 +224,22 @@ _Static_assert(sizeof(addon_data_t) == RESULT_BUFFER_SIZE, "raw data and struct 
 /*
  * Global firmware state.
  * Flags are set by interrupt handlers and consumed by the main loop.
+ *
+ * Every flag has its own byte: writing a byte is a single store, while
+ * writing a bitfield is a read-modify-write of the whole byte that can
+ * overwrite a flag set by an interrupt in between. They are volatile because
+ * the main loop polls flags that are set by interrupt handlers.
  */
 typedef struct
 {
-    uint8_t flag_update_outputs : 1;       /* set when aux_power/lcd_reset/reboot/remap/lora_reset were written via I2C */
-    uint8_t flag_button_scan_halfway : 1;  /* set at the halfway point of a debounce cycle (used to clear the interrupt line) */
-    uint8_t flag_button_state_changed : 1; /* set when a stable button state change is detected */
-    uint8_t flag_slave_first_write : 1;    /* set on every ADDR phase; the next RXNE byte is the register offset. */
-    uint8_t inputs_suspended : 1;          /* AUX rail is off: buttons and joystick are not scanned */
-    uint8_t reserved : 3;                  /* reserved for future use */
-    uint8_t slave_offset;                  /* register offset captured after the most recent ADDR+W. */
-    uint8_t slave_position;                /* current read/write cursor, reset to offset on every ADDR (including repeated-START), so write-then-read works without special-casing. */
-    uint8_t aux_settle_ticks;              /* TIM3 ticks left before scanning resumes after the AUX rail is switched on */
+    volatile uint8_t flag_update_outputs;       /* set when aux_power/lcd_reset/reboot/remap/lora_reset were written via I2C */
+    volatile uint8_t flag_button_scan_halfway;  /* set at the halfway point of a debounce cycle (used to clear the interrupt line) */
+    volatile uint8_t flag_button_state_changed; /* set when a stable button state change is detected */
+    volatile uint8_t flag_slave_first_write;    /* set on every ADDR phase; the next RXNE byte is the register offset. */
+    volatile uint8_t inputs_suspended;          /* AUX rail is off: buttons and joystick are not scanned */
+    uint8_t slave_offset;                       /* register offset captured after the most recent ADDR+W. */
+    uint8_t slave_position;                     /* current read/write cursor, reset to offset on every ADDR (including repeated-START), so write-then-read works without special-casing. */
+    volatile uint8_t aux_settle_ticks;          /* TIM3 ticks left before scanning resumes after the AUX rail is switched on */
     union
     {
         addon_data_t data;                    /* structured access to the register map */
