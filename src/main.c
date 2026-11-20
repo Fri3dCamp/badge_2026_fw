@@ -37,7 +37,6 @@
  */
 
 #include <ch32x035.h> /* both X033 and X035 */
-#include <stddef.h>   /* offsetof() */
 #include <stdlib.h>   /* atoi() */
 #include <string.h>   /* memset() */
 
@@ -139,12 +138,8 @@
 #define JOYSTICK_THRESHOLD_TOP    (3000)
 #define JOYSTICK_THRESHOLD_BOTTOM (1000)
 #define USB_VOLTAGE_THRESHOLD     (3000)
-#define JOYSTICK_CENTER           (2048) /* reported joystick value while the AUX rail is off */
+#define JOYSTICK_CENTER           (2048) /* joystick value used while the AUX rail is off */
 
-/* The joystick potentiometers are powered by the AUX 3V3 rail. While it is
- * off, the ADC only scans the channels in front of the joystick ranks.
- */
-#define ADC_CHANNELS_AUX_OFF (3)
 /* TIM3 ticks (10 ms) to wait after the AUX rail is switched on before the
  * buttons and joystick are scanned again, so the rail and the joystick
  * readings can settle.
@@ -255,12 +250,6 @@ static addon_state_t state;
  */
 static volatile uint8_t inputs_suspended; /* AUX rail is off: buttons and joystick are not scanned */
 static volatile uint8_t aux_settle_ticks; /* TIM3 ticks left before scanning resumes after the AUX rail is switched on */
-
-/* The DMA writes the ADC results into the register map: keep them 4-byte aligned */
-_Static_assert(offsetof(addon_state_t, data.adc_channels) % 4 == 0, "ADC buffer is not 4-byte aligned!");
-/* Shrinking the ADC scan while the AUX rail is off only drops the joystick channels */
-_Static_assert(JOYSTICK_X_RANK > ADC_CHANNELS_AUX_OFF && JOYSTICK_Y_RANK > ADC_CHANNELS_AUX_OFF,
-               "the joystick channels must be the last ADC ranks");
 
 /*
  * Configure AUX_POWER (PB6), LCD_RESET (PB11), and INT_OUTPUT (PC17) as
@@ -764,84 +753,20 @@ static void i2c_slave_process(void)
 }
 
 /**
- * Clear the inputs that depend on the AUX rail (buttons and joystick), so
- * they report their default (released, centered) state. The charger and USB
- * states do not depend on the AUX rail and are kept.
- */
-static void clear_aux_inputs(buttons_t *inputs)
-{
-    inputs->button_x = 0;
-    inputs->button_y = 0;
-    inputs->button_a = 0;
-    inputs->button_b = 0;
-    inputs->button_menu = 0;
-    inputs->joy_up = 0;
-    inputs->joy_down = 0;
-    inputs->joy_left = 0;
-    inputs->joy_right = 0;
-}
-
-/**
- * Change the number of ADC channels scanned into state.data.adc_channels[].
- * Used to stop sampling the joystick (the last ranks) while the AUX rail
- * is off.
- */
-static void adc_set_scan_length(uint8_t channels)
-{
-    DMA_Cmd(ADC_DMA_CHANNEL, DISABLE);
-    ADC_Cmd(ADC1, DISABLE);
-    /* drop a pending conversion so it does not land in the wrong slot */
-    (void)ADC1->RDATAR;
-
-    ADC1->RSQR1 = (ADC1->RSQR1 & ~ADC_L) | ((uint32_t)(channels - 1) << 20);
-    /* restarts the DMA at the start of the buffer */
-    DMA_SetCurrDataCounter(ADC_DMA_CHANNEL, channels);
-
-    DMA_Cmd(ADC_DMA_CHANNEL, ENABLE);
-    ADC_Cmd(ADC1, ENABLE);
-    ADC_SoftwareStartConvCmd(ADC1, ENABLE);
-}
-
-/**
  * React to the AUX rail being switched off or on (main loop context).
  *
- * Off: the buttons and joystick (powered by the AUX rail) are no longer
- * scanned. Their state is set to the default (released, centered)
- * immediately, with an interrupt to the ESP32S3 when that changes the
- * published state, so held buttons get released.
- *
- * On: the joystick is sampled again and scanning resumes after
- * AUX_SETTLE_TICKS.
+ * The buttons and joystick are powered by the AUX rail: while it is off (and
+ * shortly after it is switched on again) read_buttons() uses dummy values for
+ * them, so their state is not updated.
  */
 static void aux_power_changed(uint8_t on)
 {
-    if (!on)
+    if (on)
     {
-        /* from now on the debounce in TIM3 only sees default inputs */
-        inputs_suspended = 1;
-
-        adc_set_scan_length(ADC_CHANNELS_AUX_OFF);
-        state.data.adc_channels[JOYSTICK_X_RANK - 1] = JOYSTICK_CENTER;
-        state.data.adc_channels[JOYSTICK_Y_RANK - 1] = JOYSTICK_CENTER;
-
-        /* publish the default state, without racing the debounce in TIM3 */
-        NVIC_DisableIRQ(TIM3_IRQn);
-        buttons_t inputs = state.data.inputs;
-        clear_aux_inputs(&inputs);
-        if (memcmp(&inputs, &state.data.inputs, BUTTON_SIZE) != 0)
-        {
-            state.data.inputs = inputs;
-            state.flag_button_state_changed = 1;
-        }
-        NVIC_EnableIRQ(TIM3_IRQn);
-    }
-    else
-    {
-        adc_set_scan_length(ADC_CHANNELS);
-        /* keep the inputs suspended until the rail and the ADC have settled */
+        /* keep using dummy values until the rail and the joystick readings have settled */
         aux_settle_ticks = AUX_SETTLE_TICKS;
-        inputs_suspended = 0;
     }
+    inputs_suspended = !on;
 }
 
 /**
@@ -865,6 +790,18 @@ static buttons_t read_buttons(void)
     uint16_t joy_x = state.data.adc_channels[JOYSTICK_X_RANK - 1];
     uint16_t joy_y = state.data.adc_channels[JOYSTICK_Y_RANK - 1];
     uint16_t usb_voltage = state.data.adc_channels[USB_MONITOR_RANK - 1];
+
+    /* The buttons and joystick are powered by the AUX rail: while it is off or
+     * settling, use dummy values (released, centered) so their state is not
+     * updated. The charger and USB states are still read.
+     */
+    if (inputs_suspended || aux_settle_ticks)
+    {
+        b |= BUTTON_X_PIN | BUTTON_A_PIN | BUTTON_B_PIN | BUTTON_Y_PIN;
+        c |= BUTTON_MENU_PIN;
+        joy_x = JOYSTICK_CENTER;
+        joy_y = JOYSTICK_CENTER;
+    }
 
     // TODO: check polarities
 
@@ -931,12 +868,6 @@ static buttons_t read_buttons(void)
     if (usb_voltage > USB_VOLTAGE_THRESHOLD)
     {
         res.usb_plugged = 1;
-    }
-
-    /* buttons and joystick are not scanned while the AUX rail is off or settling */
-    if (inputs_suspended || aux_settle_ticks)
-    {
-        clear_aux_inputs(&res);
     }
 
     return res;
