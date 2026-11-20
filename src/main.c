@@ -37,6 +37,7 @@
  */
 
 #include <ch32x035.h> /* both X033 and X035 */
+#include <stddef.h>   /* offsetof() */
 #include <stdlib.h>   /* atoi() */
 #include <string.h>   /* memset() */
 
@@ -230,10 +231,11 @@ typedef struct
     uint8_t flag_button_scan_halfway : 1;  /* set at the halfway point of a debounce cycle (used to clear the interrupt line) */
     uint8_t flag_button_state_changed : 1; /* set when a stable button state change is detected */
     uint8_t flag_slave_first_write : 1;    /* set on every ADDR phase; the next RXNE byte is the register offset. */
-    uint8_t reserved : 4;                  /* reserved for future use */
+    uint8_t inputs_suspended : 1;          /* AUX rail is off: buttons and joystick are not scanned */
+    uint8_t reserved : 3;                  /* reserved for future use */
     uint8_t slave_offset;                  /* register offset captured after the most recent ADDR+W. */
     uint8_t slave_position;                /* current read/write cursor, reset to offset on every ADDR (including repeated-START), so write-then-read works without special-casing. */
-    uint8_t unused;
+    uint8_t aux_settle_ticks;              /* TIM3 ticks left before scanning resumes after the AUX rail is switched on */
     union
     {
         addon_data_t data;                    /* structured access to the register map */
@@ -244,12 +246,8 @@ typedef struct
 /* global state variable */
 static addon_state_t state;
 
-/*
- * AUX rail handling, written by the main loop and read by TIM3. Kept out of
- * the flag bitfield above, which TIM3 writes too.
- */
-static volatile uint8_t inputs_suspended; /* AUX rail is off: buttons and joystick are not scanned */
-static volatile uint8_t aux_settle_ticks; /* TIM3 ticks left before scanning resumes after the AUX rail is switched on */
+/* The DMA writes the ADC results into the register map: keep them 4-byte aligned */
+_Static_assert(offsetof(addon_state_t, data.adc_channels) % 4 == 0, "ADC buffer is not 4-byte aligned!");
 
 /*
  * Configure AUX_POWER (PB6), LCD_RESET (PB11), and INT_OUTPUT (PC17) as
@@ -764,9 +762,9 @@ static void aux_power_changed(uint8_t on)
     if (on)
     {
         /* keep using dummy values until the rail and the joystick readings have settled */
-        aux_settle_ticks = AUX_SETTLE_TICKS;
+        state.aux_settle_ticks = AUX_SETTLE_TICKS;
     }
-    inputs_suspended = !on;
+    state.inputs_suspended = !on;
 }
 
 /**
@@ -795,7 +793,7 @@ static buttons_t read_buttons(void)
      * settling, use dummy values (released, centered) so their state is not
      * updated. The charger and USB states are still read.
      */
-    if (inputs_suspended || aux_settle_ticks)
+    if (state.inputs_suspended || state.aux_settle_ticks)
     {
         b |= BUTTON_X_PIN | BUTTON_A_PIN | BUTTON_B_PIN | BUTTON_Y_PIN;
         c |= BUTTON_MENU_PIN;
@@ -895,9 +893,9 @@ static void Button_Scan(void)
     static uint8_t scan_cnt = 0;
     static buttons_t previous_button_state = {0};
 
-    if (aux_settle_ticks)
+    if (state.aux_settle_ticks)
     {
-        aux_settle_ticks--;
+        state.aux_settle_ticks--;
     }
 
     scan_cnt++;
