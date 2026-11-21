@@ -167,6 +167,7 @@
  * Total: RESULT_BUFFER_SIZE = 23 bytes.
  */
 #define BUTTON_SIZE        (2) /* sizeof(buttons_t) */
+#define INPUTS_OFFSET      (3 + 1) /* byte offset of the inputs, the first 16-bit register */
 #define RESULT_BUFFER_SIZE (3 + 1 + BUTTON_SIZE + 2 + (ADC_CHANNELS * 2) + 2 + 2 + 1)
 #define PWM_LCD_OFFSET     (3 + 1 + BUTTON_SIZE + 2 + (ADC_CHANNELS * 2)) /* byte offset of lcd_brightness */
 #define PWM_LED_OFFSET     (PWM_LCD_OFFSET + 2)                       /* byte offset of led_brightness */
@@ -247,11 +248,22 @@ typedef struct
     };
 } addon_state_t;
 
-/* global state variable */
-static addon_state_t state;
+/* global state variable. Aligned: the DMA writes the ADC values as halfwords. */
+static addon_state_t state __attribute__((aligned(4)));
 
 /* The DMA writes the ADC results into the register map: keep them 4-byte aligned */
 _Static_assert(offsetof(addon_state_t, data.adc_channels) % 4 == 0, "ADC buffer is not 4-byte aligned!");
+/* The inputs are written and read as one halfword at INPUTS_OFFSET */
+_Static_assert(offsetof(addon_data_t, inputs) == INPUTS_OFFSET, "inputs are not at INPUTS_OFFSET!");
+
+/*
+ * Copy of the read-only registers (up to the LCD brightness), taken at the
+ * start of every I2C read. The DMA updates the ADC values at any time and TIM3
+ * the inputs: a value that changes between the transmission of its two bytes
+ * would be read torn (e.g. a battery voltage of 0x07FF -> 0x0800 read as
+ * 0x08FF).
+ */
+static uint8_t i2c_snapshot[PWM_LCD_OFFSET];
 
 /*
  * Configure AUX_POWER (PB6), LCD_RESET (PB11), and INT_OUTPUT (PC17) as
@@ -652,6 +664,25 @@ static void reset_to_bootloader(void)
     NVIC_SystemReset();
 }
 
+/*
+ * Take a consistent copy of the read-only registers. Halfword loads of the
+ * 16-bit registers: the DMA and TIM3 write them as halfwords, so a load sees
+ * either the old or the new value.
+ */
+static void i2c_take_snapshot(void)
+{
+    const volatile uint16_t *regs = (const volatile uint16_t *)&state.raw_data[INPUTS_OFFSET];
+
+    memcpy(i2c_snapshot, state.raw_data, INPUTS_OFFSET);
+    for (int i = 0; i < (PWM_LCD_OFFSET - INPUTS_OFFSET) / 2; i++)
+    {
+        uint16_t value = regs[i];
+
+        i2c_snapshot[INPUTS_OFFSET + 2 * i] = value & 0xff;
+        i2c_snapshot[INPUTS_OFFSET + 2 * i + 1] = value >> 8;
+    }
+}
+
 static int i2c_pos_is_writable(uint8_t pos)
 {
     if (pos >= PWM_LCD_OFFSET && pos < PWM_LCD_OFFSET + 2 + 2 + 1) return 1;
@@ -674,8 +705,9 @@ static int i2c_pos_is_writable(uint8_t pos)
  *   - OUTPUTS_OFFSET  → next 1 byte  sets aux_power/lcd_reset/reboot flags; flag_update_outputs raised
  *   - any other addr  → write is rejected; remaining RXNE bytes are drained and discarded
  *
- * On TXE (master is reading): bytes are sent sequentially from raw_data[] starting at
- * state.slave_position, advancing the pointer with each byte sent.
+ * On TXE (master is reading): bytes are sent sequentially starting at
+ * state.slave_position, advancing the pointer with each byte sent. The
+ * read-only registers come from a copy taken at the first byte of the read.
  *
  * Reading STAR2 clears the ADDR flag as a hardware side-effect.
  * This releases the clock when clock stretching is enabled
@@ -721,13 +753,24 @@ static void i2c_slave_process(void)
     }
 
     /* Process transmitting data (master is reading from us).
-     * Send one byte from raw_data[] at the current pointer position and advance
-     * the pointer so consecutive TXE interrupts walk through the register file.
+     * Send one byte at the current pointer position (from the snapshot for the
+     * read-only registers, from raw_data[] for the others) and advance the
+     * pointer so consecutive TXE interrupts walk through the register file.
      * If slave_position is out of range, send 0x00 as a safe dummy byte.
      */
     if (flag1 & I2C_STAR1_TXE)
     {
-        if (state.slave_position < RESULT_BUFFER_SIZE)
+        /* First byte of a read: take a consistent copy of the read-only registers */
+        if (state.slave_position == state.slave_offset)
+        {
+            i2c_take_snapshot();
+        }
+
+        if (state.slave_position < PWM_LCD_OFFSET)
+        {
+            I2C_SendData(I2C1, i2c_snapshot[state.slave_position++]);
+        }
+        else if (state.slave_position < RESULT_BUFFER_SIZE)
         {
             I2C_SendData(I2C1, state.raw_data[state.slave_position++]);
         }
@@ -922,8 +965,12 @@ static void Button_Scan(void)
         if (memcmp(&button_state, &previous_button_state, BUTTON_SIZE) == 0 && memcmp(&button_state, &state.data.inputs, BUTTON_SIZE) != 0)
         {
             /* Stable new state: publish it and trigger an interrupt to the ESP32 */
+            uint16_t inputs;
+
             state.flag_button_state_changed = 1;
-            state.data.inputs = button_state;
+            /* one halfword store, so an I2C read sees either the old or the new state */
+            memcpy(&inputs, &button_state, BUTTON_SIZE);
+            *(volatile uint16_t *)&state.raw_data[INPUTS_OFFSET] = inputs;
             memset(&previous_button_state, 0, BUTTON_SIZE);
         }
     }
