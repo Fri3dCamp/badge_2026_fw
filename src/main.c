@@ -264,6 +264,12 @@ static void Outputs_Init(void)
 
     GPIO_InitTypeDef GPIO_InitStructure = {0};
 
+    /* Set the output level before the pin becomes an output: the AUX 3V3 rail
+     * is on at power-up (pull-up on the LDO enable) and must stay on, also while
+     * the firmware boots (the output data register resets to 0 = rail off).
+     */
+    GPIO_SetBits(AUX_POWER_PORT, AUX_POWER_PIN);
+
     /* AUX power and LCD reset are on GPIOB */
     GPIO_InitStructure.GPIO_Pin = AUX_POWER_PIN | LCD_RESET_PIN | LORA_RESET_PIN;
     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
