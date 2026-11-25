@@ -6,7 +6,7 @@
  * Firmware update of the Fri3d Camp 2026 badge's coprocessor over RVSWD
  * (CONFIG_MFD_FRI3D_EXPANDER_UPDATE): the coprocessor gives its I2C pins to
  * SWD on request, the zephyr-rvswd module programs it, and the pins go back
- * to I2C. Also the bundled image, its installation at boot and the shell.
+ * to I2C. Also the bundled image and its installation at boot.
  */
 
 #define DT_DRV_COMPAT fri3d_badge_2026_expander
@@ -22,6 +22,10 @@
 #include "mfd_fri3d_expander_priv.h"
 
 LOG_MODULE_DECLARE(mfd_fri3d_expander, CONFIG_MFD_LOG_LEVEL);
+
+/* successful updates since boot, and whether the one at boot was one (for the shell) */
+static unsigned int mfd_fri3d_expander_updates;
+static bool mfd_fri3d_expander_updated_at_boot;
 
 /* Delay for the coprocessor to give its I2C pins to SWD after the remap command */
 #define REMAP_DELAY_MS 200
@@ -130,6 +134,9 @@ int mfd_fri3d_expander_update(const struct device *dev, const void *image, size_
 	k_msleep(REMAP_DELAY_MS);
 
 	ret = mfd_fri3d_expander_program(dev, image, len, cb, user_data);
+	if (ret == 0) {
+		mfd_fri3d_expander_updates++;
+	}
 	/* the pins go back to I2C */
 	rvswd_disconnect(config->rvswd);
 
@@ -161,9 +168,6 @@ int mfd_fri3d_expander_update(const struct device *dev, const void *image, size_
 }
 
 #ifdef FRI3D_EXPANDER_HAS_FIRMWARE
-/* the bundled firmware was installed at boot (for the shell) */
-static bool mfd_fri3d_expander_updated_at_boot;
-
 static const uint8_t mfd_fri3d_expander_firmware[] = {
 #include "fri3d_expander_firmware.inc"
 };
@@ -181,13 +185,34 @@ static void mfd_fri3d_expander_bundled_version(uint8_t version[3])
 	}
 }
 
-static int mfd_fri3d_expander_update_bundled(const struct device *dev,
-					     mfd_fri3d_expander_progress_cb_t cb, void *user_data)
+#endif /* FRI3D_EXPANDER_HAS_FIRMWARE */
+
+int mfd_fri3d_expander_update_bundled(const struct device *dev,
+				      mfd_fri3d_expander_progress_cb_t cb, void *user_data)
 {
+#ifdef FRI3D_EXPANDER_HAS_FIRMWARE
 	return mfd_fri3d_expander_update(dev, mfd_fri3d_expander_firmware,
 					 sizeof(mfd_fri3d_expander_firmware), cb, user_data);
+#else
+	ARG_UNUSED(dev);
+	ARG_UNUSED(cb);
+	ARG_UNUSED(user_data);
+
+	return -ENOENT;
+#endif
 }
-#endif /* FRI3D_EXPANDER_HAS_FIRMWARE */
+
+void mfd_fri3d_expander_get_update_info(struct mfd_fri3d_expander_update_info *info)
+{
+	*info = (struct mfd_fri3d_expander_update_info){
+		.updates = mfd_fri3d_expander_updates,
+		.updated_at_boot = mfd_fri3d_expander_updated_at_boot,
+	};
+#ifdef FRI3D_EXPANDER_HAS_FIRMWARE
+	info->bundled_len = sizeof(mfd_fri3d_expander_firmware);
+	mfd_fri3d_expander_bundled_version(info->bundled_version);
+#endif
+}
 
 #ifdef CONFIG_MFD_FRI3D_EXPANDER_UPDATE_AT_BOOT
 /*
@@ -228,74 +253,3 @@ int mfd_fri3d_expander_update_at_boot(const struct device *dev, int answered)
 #endif
 }
 #endif /* CONFIG_MFD_FRI3D_EXPANDER_UPDATE_AT_BOOT */
-
-#if defined(CONFIG_SHELL) && defined(FRI3D_EXPANDER_HAS_FIRMWARE)
-#include <zephyr/shell/shell.h>
-#include <zephyr/sys/reboot.h>
-
-static const struct device *const shell_expander = DEVICE_DT_GET(DT_DRV_INST(0));
-
-static void mfd_fri3d_expander_shell_progress(size_t done, size_t total, void *user_data)
-{
-	const struct shell *sh = user_data;
-
-	/* every 25 % */
-	if (done == total || (done * 4 / total) != ((done + 256) * 4 / total)) {
-		shell_print(sh, "  %u %%", (unsigned int)(done * 100 / total));
-	}
-}
-
-static int cmd_expander_version(const struct shell *sh, size_t argc, char **argv)
-{
-	uint8_t version[3], bundled[3];
-
-	ARG_UNUSED(argc);
-	ARG_UNUSED(argv);
-
-	mfd_fri3d_expander_get_version(shell_expander, version);
-	mfd_fri3d_expander_bundled_version(bundled);
-	shell_print(sh, "coprocessor firmware v%u.%u.%u, bundled v%u.%u.%u (%u bytes)%s", version[0],
-		    version[1], version[2], bundled[0], bundled[1], bundled[2],
-		    (unsigned int)sizeof(mfd_fri3d_expander_firmware),
-		    mfd_fri3d_expander_updated_at_boot ? ", installed at boot" : "");
-
-	return 0;
-}
-
-static int cmd_expander_update(const struct shell *sh, size_t argc, char **argv)
-{
-	int ret;
-
-	ARG_UNUSED(argc);
-	ARG_UNUSED(argv);
-
-	shell_print(sh, "installing the bundled coprocessor firmware");
-	ret = mfd_fri3d_expander_update_bundled(shell_expander, mfd_fri3d_expander_shell_progress,
-						(void *)sh);
-	if (ret != 0) {
-		shell_error(sh, "update failed: %d", ret);
-		return ret;
-	}
-
-	cmd_expander_version(sh, 0, NULL);
-
-#ifdef CONFIG_REBOOT
-	/* the new firmware reset the display, touch controller and LoRa module */
-	shell_print(sh, "restarting");
-	k_msleep(100);
-	sys_reboot(SYS_REBOOT_COLD);
-#else
-	shell_print(sh, "restart the badge: the display was reset");
-#endif
-
-	return 0;
-}
-
-SHELL_STATIC_SUBCMD_SET_CREATE(sub_expander,
-	SHELL_CMD(version, NULL, "Coprocessor and bundled firmware versions",
-		  cmd_expander_version),
-	SHELL_CMD(update, NULL, "Install the bundled coprocessor firmware", cmd_expander_update),
-	SHELL_SUBCMD_SET_END);
-
-SHELL_CMD_REGISTER(expander, &sub_expander, "Fri3d badge 2026 coprocessor", NULL);
-#endif

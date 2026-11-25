@@ -33,6 +33,14 @@ config MFD_FRI3D_EXPANDER_POLL_PERIOD_MS
 	default 50
 	depends on MFD_FRI3D_EXPANDER_POLL
 
+config MFD_FRI3D_EXPANDER_SHELL
+	bool "Coprocessor shell commands"
+	default y
+	depends on SHELL
+	help
+	  The "expander" shell command: firmware version, and with a bundled
+	  image (MFD_FRI3D_EXPANDER_FIRMWARE) its installation.
+
 config MFD_FRI3D_EXPANDER_UPDATE
 	bool "Coprocessor firmware update over RVSWD"
 	help

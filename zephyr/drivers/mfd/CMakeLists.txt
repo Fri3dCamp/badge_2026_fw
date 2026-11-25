@@ -5,6 +5,7 @@
 zephyr_library_amend(${ZEPHYR_CURRENT_MODULE_DIR}/zephyr)
 zephyr_library_sources_ifdef(CONFIG_MFD_FRI3D_EXPANDER mfd_fri3d_expander.c)
 zephyr_library_sources_ifdef(CONFIG_MFD_FRI3D_EXPANDER_UPDATE mfd_fri3d_expander_update.c)
+zephyr_library_sources_ifdef(CONFIG_MFD_FRI3D_EXPANDER_SHELL mfd_fri3d_expander_shell.c)
 
 # The update uses the zephyr-rvswd module (west project, module name rvswd)
 if(CONFIG_MFD_FRI3D_EXPANDER_UPDATE AND NOT CONFIG_RVSWD_CH32X03X)
