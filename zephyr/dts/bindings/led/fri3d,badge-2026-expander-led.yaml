@@ -6,6 +6,20 @@ description: |
   API with brightness 0-100. LED 0 is the LCD backlight, LED 1 is the debug
   LED on the back of the badge.
 
+  The LEDs can be described as child nodes in that order (led_dt_spec):
+
+    leds {
+        compatible = "fri3d,badge-2026-expander-led";
+
+        backlight {
+            label = "LCD backlight";
+        };
+
+        debug_led: debug-led {
+            label = "Debug LED";
+        };
+    };
+
 compatible: "fri3d,badge-2026-expander-led"
 
-include: base.yaml
+include: [base.yaml, led-controller.yaml]
