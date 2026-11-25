@@ -1,0 +1,77 @@
+# Copyright (c) 2026 Bert Outtier <outtierbert@gmail.com>
+# SPDX-License-Identifier: Apache-2.0
+
+if MFD
+
+config MFD_FRI3D_EXPANDER
+	bool "Fri3d Badge 2026 I/O coprocessor"
+	default y
+	depends on DT_HAS_FRI3D_BADGE_2026_EXPANDER_ENABLED
+	depends on MULTITHREADING # the MFD uses a mutex, work items and sleeps
+	select I2C
+	help
+	  Multi-function device driver for the CH32X035 I/O coprocessor of the
+	  Fri3d Camp 2026 badge.
+
+if MFD_FRI3D_EXPANDER
+
+config MFD_FRI3D_EXPANDER_INIT_PRIORITY
+	int "Initialization priority"
+	default 70
+	help
+	  Must be after the I2C controller and before the MIPI DBI driver,
+	  which uses the LCD reset of the GPIO child.
+
+config MFD_FRI3D_EXPANDER_POLL
+	bool "Poll the inputs instead of using the INT line"
+	help
+	  Read the input register periodically instead of when the
+	  coprocessor pulses its INT line.
+
+config MFD_FRI3D_EXPANDER_POLL_PERIOD_MS
+	int "Input polling period in milliseconds"
+	default 50
+	depends on MFD_FRI3D_EXPANDER_POLL
+
+config MFD_FRI3D_EXPANDER_SHELL
+	bool "Coprocessor shell commands"
+	default y
+	depends on SHELL
+	help
+	  The "expander" shell command: firmware version, and with a bundled
+	  image (MFD_FRI3D_EXPANDER_FIRMWARE) its installation.
+
+config MFD_FRI3D_EXPANDER_UPDATE
+	bool "Coprocessor firmware update over RVSWD"
+	help
+	  Update the coprocessor firmware with mfd_fri3d_expander_update(),
+	  through the RVSWD interface of the expander's rvswd property: the
+	  coprocessor remaps its I2C pins to SWD on request. Needs the
+	  zephyr-rvswd module (github.com/bertouttier/zephyr-rvswd) in the
+	  west workspace and an enabled wch,rvswd node as the expander's
+	  rvswd property; the build stops if either is missing.
+
+if MFD_FRI3D_EXPANDER_UPDATE
+
+config MFD_FRI3D_EXPANDER_FIRMWARE
+	string "Coprocessor firmware image to bundle"
+	help
+	  Path to a coprocessor firmware binary (badge_2026_fw release build),
+	  absolute or relative to the application directory, to link into the
+	  application. Empty: no image. With an image, the "expander update"
+	  shell command installs it.
+
+config MFD_FRI3D_EXPANDER_FIRMWARE_VERSION
+	string "Version of the bundled firmware image"
+	default "0.0.0"
+	help
+	  Version of the image in MFD_FRI3D_EXPANDER_FIRMWARE, as major.minor.patch.
+	  Applications compare it with the coprocessor's version
+	  (mfd_fri3d_expander_get_bundled_version()) to decide on an update; it
+	  must match the image.
+
+endif # MFD_FRI3D_EXPANDER_UPDATE
+
+endif # MFD_FRI3D_EXPANDER
+
+endif # MFD

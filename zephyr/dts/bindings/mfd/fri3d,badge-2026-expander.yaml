@@ -1,0 +1,70 @@
+# Copyright (c) 2026 Bert Outtier <outtierbert@gmail.com>
+# SPDX-License-Identifier: Apache-2.0
+
+description: |
+  CH32X035 I/O coprocessor of the Fri3d Camp 2026 badge, running the
+  badge_2026_fw firmware as an I2C slave (address 0x50).
+
+  It reads the buttons, joystick, charger status, battery, USB and
+  multimeter voltages, and controls the LCD backlight, debug LED, AUX 3V3
+  rail, LCD reset and LoRa reset. The functions are child nodes:
+
+    expander: expander@50 {
+        compatible = "fri3d,badge-2026-expander";
+        reg = <0x50>;
+        int-gpios = <&gpio0 3 GPIO_ACTIVE_HIGH>;
+
+        expander_gpio: gpio {
+            compatible = "fri3d,badge-2026-expander-gpio";
+            gpio-controller;
+            #gpio-cells = <2>;
+            ngpios = <5>;
+        };
+
+        keys {
+            compatible = "fri3d,badge-2026-expander-keys";
+
+            button_a {
+                bit-num = <4>;
+                zephyr,code = <INPUT_KEY_A>;
+            };
+        };
+
+        leds {
+            compatible = "fri3d,badge-2026-expander-led";
+        };
+
+        battery {
+            compatible = "fri3d,badge-2026-expander-sensor";
+        };
+
+        charger {
+            compatible = "fri3d,badge-2026-expander-charger";
+        };
+    };
+
+compatible: "fri3d,badge-2026-expander"
+
+include: i2c-device.yaml
+
+properties:
+  int-gpios:
+    type: phandle-array
+    description: |
+      GPIO connected to the coprocessor INT output (CH32 PC17). The
+      coprocessor drives it high for about 50 ms when an input changes, so
+      it is active-high.
+
+  rvswd:
+    type: phandle
+    description: |
+      RVSWD interface (wch,rvswd) on the coprocessor's I2C pins, to update its
+      firmware (CONFIG_MFD_FRI3D_EXPANDER_UPDATE).
+
+  boot-timeout-ms:
+    type: int
+    default: 1500
+    description: |
+      Time to wait for the coprocessor to answer on I2C at init. After a
+      power-on the coprocessor firmware waits one second before it enables
+      its I2C slave.

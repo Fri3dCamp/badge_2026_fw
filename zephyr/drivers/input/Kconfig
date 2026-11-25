@@ -1,0 +1,21 @@
+# Copyright (c) 2026 Bert Outtier <outtierbert@gmail.com>
+# SPDX-License-Identifier: Apache-2.0
+
+if INPUT
+
+config INPUT_FRI3D_EXPANDER
+	bool "Fri3d Badge 2026 I/O coprocessor keys"
+	default y
+	depends on DT_HAS_FRI3D_BADGE_2026_EXPANDER_KEYS_ENABLED
+	depends on MULTITHREADING # the MFD uses a mutex, work items and sleeps
+	select MFD
+	help
+	  Buttons and joystick directions of the Fri3d Camp 2026 badge, read
+	  by its I/O coprocessor.
+
+config INPUT_FRI3D_EXPANDER_INIT_PRIORITY
+	int "Initialization priority"
+	default INPUT_INIT_PRIORITY
+	depends on INPUT_FRI3D_EXPANDER
+
+endif # INPUT

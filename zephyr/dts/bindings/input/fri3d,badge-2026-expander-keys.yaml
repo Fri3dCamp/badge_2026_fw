@@ -1,0 +1,28 @@
+# Copyright (c) 2026 Bert Outtier <outtierbert@gmail.com>
+# SPDX-License-Identifier: Apache-2.0
+
+description: |
+  Buttons and joystick directions of the Fri3d Camp 2026 badge, read by its
+  I/O coprocessor. Each child node maps a bit of the coprocessor input
+  register to an input event code.
+
+compatible: "fri3d,badge-2026-expander-keys"
+
+include: base.yaml
+
+child-binding:
+  description: Key
+  properties:
+    bit-num:
+      type: int
+      required: true
+      description: Bit of the input register (0x04)
+
+    label:
+      type: string
+      description: Descriptive name of the key
+
+    zephyr,code:
+      type: int
+      required: true
+      description: Key code to emit.

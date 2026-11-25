@@ -1,0 +1,8 @@
+# Zephyr module: the badge's side of this coprocessor (drivers for the
+# ESP32-S3 of the Fri3d Camp 2026 badge). The firmware itself is in firmware/.
+name: fri3d-badge-2026-expander
+build:
+  cmake: zephyr
+  kconfig: zephyr/Kconfig
+  settings:
+    dts_root: zephyr

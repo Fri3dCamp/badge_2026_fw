@@ -1,0 +1,24 @@
+# Copyright (c) 2026 Bert Outtier <outtierbert@gmail.com>
+# SPDX-License-Identifier: Apache-2.0
+
+if GPIO
+
+config GPIO_FRI3D_EXPANDER
+	bool "Fri3d Badge 2026 I/O coprocessor GPIO driver"
+	default y
+	depends on DT_HAS_FRI3D_BADGE_2026_EXPANDER_GPIO_ENABLED
+	depends on MULTITHREADING # the MFD uses a mutex, work items and sleeps
+	select MFD
+	help
+	  Output-only GPIOs of the Fri3d Camp 2026 badge I/O coprocessor
+	  (AUX 3V3 rail, LCD reset, LoRa reset).
+
+config GPIO_FRI3D_EXPANDER_INIT_PRIORITY
+	int "Initialization priority"
+	default 71
+	depends on GPIO_FRI3D_EXPANDER
+	help
+	  Must be after the expander MFD and before the MIPI DBI driver and
+	  the aux_3v3 power domain.
+
+endif # GPIO

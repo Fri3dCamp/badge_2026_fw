@@ -1,0 +1,12 @@
+# Copyright (c) 2026 Bert Outtier <outtierbert@gmail.com>
+# SPDX-License-Identifier: Apache-2.0
+
+description: |
+  Battery voltage measured by the Fri3d Badge 2026 I/O coprocessor (CH32X035,
+  100k/100k divider on PC0), exposed through the sensor API as
+  SENSOR_CHAN_VOLTAGE. Can be used as the source of a
+  zephyr,fuel-gauge-composite.
+
+compatible: "fri3d,badge-2026-expander-sensor"
+
+include: base.yaml
