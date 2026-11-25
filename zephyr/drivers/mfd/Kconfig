@@ -35,12 +35,13 @@ config MFD_FRI3D_EXPANDER_POLL_PERIOD_MS
 
 config MFD_FRI3D_EXPANDER_UPDATE
 	bool "Coprocessor firmware update over RVSWD"
-	default y
-	depends on RVSWD_CH32X03X
 	help
 	  Update the coprocessor firmware with mfd_fri3d_expander_update(),
 	  through the RVSWD interface of the expander's rvswd property: the
-	  coprocessor remaps its I2C pins to SWD on request.
+	  coprocessor remaps its I2C pins to SWD on request. Needs the
+	  zephyr-rvswd module (github.com/bertouttier/zephyr-rvswd) in the
+	  west workspace and an enabled wch,rvswd node as the expander's
+	  rvswd property; the build stops if either is missing.
 
 if MFD_FRI3D_EXPANDER_UPDATE
 
