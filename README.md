@@ -69,7 +69,7 @@ keep being sampled, and the charger and USB states keep being updated.
 
 ## Building
 
-Use [platformio](https://platformio.org) to build this project. You should install the [ch32v platform package](https://github.com/Community-PIO-CH32V/platform-ch32v) as well. If you use the command line, build using:
+The firmware is a [platformio](https://platformio.org) project in the `firmware` folder. You should install the [ch32v platform package](https://github.com/Community-PIO-CH32V/platform-ch32v) as well. If you use the command line, build from that folder using:
 
 ```
 pio run -e debug
