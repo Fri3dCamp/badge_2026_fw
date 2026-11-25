@@ -1,0 +1,14 @@
+# Copyright (c) 2026 Bert Outtier <outtierbert@gmail.com>
+# SPDX-License-Identifier: Apache-2.0
+
+description: |
+  TP4056 battery charger status as reported by the Fri3d Badge 2026 IO
+  expander, exposed through the charger API (read-only):
+
+  - CHARGER_PROP_ONLINE: USB power present
+  - CHARGER_PROP_STATUS: charging (CHRG), full (STDBY), not charging or
+    discharging (on battery)
+
+compatible: "fri3d,badge-2026-expander-charger"
+
+include: base.yaml

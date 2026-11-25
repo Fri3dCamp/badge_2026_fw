@@ -1,0 +1,16 @@
+# Copyright (c) 2026 Bert Outtier <outtierbert@gmail.com>
+# SPDX-License-Identifier: Apache-2.0
+
+if CHARGER
+
+config CHARGER_FRI3D_EXPANDER
+	bool "Fri3d Badge 2026 I/O coprocessor charger status"
+	default y
+	depends on DT_HAS_FRI3D_BADGE_2026_EXPANDER_CHARGER_ENABLED
+	depends on MULTITHREADING # the MFD uses a mutex, work items and sleeps
+	select MFD
+	help
+	  TP4056 charger status of the Fri3d Camp 2026 badge, read by its I/O
+	  coprocessor.
+
+endif # CHARGER
