@@ -66,15 +66,9 @@ config MFD_FRI3D_EXPANDER_FIRMWARE_VERSION
 	default "0.0.0"
 	help
 	  Version of the image in MFD_FRI3D_EXPANDER_FIRMWARE, as major.minor.patch.
-
-config MFD_FRI3D_EXPANDER_UPDATE_AT_BOOT
-	bool "Install the bundled image at boot when the coprocessor runs an older version"
-	help
-	  Like MicroPythonOS: at init, if the coprocessor reports an older
-	  version than MFD_FRI3D_EXPANDER_FIRMWARE_VERSION, or does not answer at
-	  all (e.g. no firmware), install the bundled image. Debug builds of the
-	  coprocessor firmware report 255.255.255 and are left alone. Takes
-	  about 7 seconds.
+	  Applications compare it with the coprocessor's version
+	  (mfd_fri3d_expander_get_bundled_version()) to decide on an update; it
+	  must match the image.
 
 endif # MFD_FRI3D_EXPANDER_UPDATE
 

@@ -259,9 +259,6 @@ static int mfd_fri3d_expander_init(const struct device *dev)
 		data->outputs_valid = ret == 0;
 	}
 
-#ifdef CONFIG_MFD_FRI3D_EXPANDER_UPDATE_AT_BOOT
-	ret = mfd_fri3d_expander_update_at_boot(dev, ret);
-#endif
 	if (ret != 0) {
 		LOG_ERR("%s: no answer from the coprocessor", dev->name);
 		return -ENODEV;

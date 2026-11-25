@@ -167,8 +167,9 @@ typedef void (*mfd_fri3d_expander_progress_cb_t)(size_t done, size_t total, void
  *
  * The new firmware pulses the LCD and LoRa reset when it starts: the display,
  * touch controller and LoRa module need to be initialized again, e.g. by
- * restarting. At boot (CONFIG_MFD_FRI3D_EXPANDER_UPDATE_AT_BOOT) the update
- * runs before their drivers initialize.
+ * restarting. A coprocessor without firmware does not answer and its device
+ * does not initialize: this function still installs firmware on it (restart
+ * afterwards).
  *
  * @param dev Expander MFD device.
  * @param image Firmware binary (badge_2026_fw release build).
@@ -182,6 +183,54 @@ typedef void (*mfd_fri3d_expander_progress_cb_t)(size_t done, size_t total, void
  */
 int mfd_fri3d_expander_update(const struct device *dev, const void *image, size_t len,
 			      mfd_fri3d_expander_progress_cb_t cb, void *user_data);
+
+/**
+ * @brief Get the version of the bundled firmware image.
+ *
+ * The image comes from CONFIG_MFD_FRI3D_EXPANDER_FIRMWARE, its version from
+ * CONFIG_MFD_FRI3D_EXPANDER_FIRMWARE_VERSION. Together with
+ * mfd_fri3d_expander_get_version() an application can keep the coprocessor on
+ * the bundled version, e.g. at start:
+ *
+ * @code{.c}
+ * uint8_t running[3], bundled[3];
+ *
+ * if (mfd_fri3d_expander_get_bundled_version(bundled) == 0) {
+ *         if (device_is_ready(dev)) {
+ *                 mfd_fri3d_expander_get_version(dev, running);
+ *         }
+ *         if (!device_is_ready(dev) || memcmp(running, bundled, sizeof(bundled)) < 0) {
+ *                 if (mfd_fri3d_expander_update_bundled(dev, NULL, NULL) == 0) {
+ *                         sys_reboot(SYS_REBOOT_COLD);
+ *                 }
+ *         }
+ * }
+ * @endcode
+ *
+ * Debug builds of the coprocessor firmware report 255.255.255, so they are left
+ * alone. Needs CONFIG_MFD_FRI3D_EXPANDER_UPDATE.
+ *
+ * @param version Buffer for major, minor and patch.
+ * @retval 0 on success.
+ * @retval -ENOENT without a bundled image.
+ */
+int mfd_fri3d_expander_get_bundled_version(uint8_t version[3]);
+
+/**
+ * @brief Install the bundled firmware image.
+ *
+ * As mfd_fri3d_expander_update() with the image of
+ * CONFIG_MFD_FRI3D_EXPANDER_FIRMWARE. Needs CONFIG_MFD_FRI3D_EXPANDER_UPDATE.
+ *
+ * @param dev Expander MFD device.
+ * @param cb Progress callback, or NULL.
+ * @param user_data Passed to the callback.
+ * @retval 0 on success.
+ * @retval -ENOENT without a bundled image.
+ * @retval other negative errno as mfd_fri3d_expander_update().
+ */
+int mfd_fri3d_expander_update_bundled(const struct device *dev,
+				      mfd_fri3d_expander_progress_cb_t cb, void *user_data);
 
 #ifdef __cplusplus
 }
