@@ -16,13 +16,16 @@ if(CONFIG_MFD_FRI3D_EXPANDER_UPDATE AND NOT CONFIG_RVSWD_CH32X03X)
           "as the expander's rvswd property")
 endif()
 
-# Coprocessor firmware image to link in (CONFIG_MFD_FRI3D_EXPANDER_FIRMWARE)
+# Coprocessor firmware image to link in (CONFIG_MFD_FRI3D_EXPANDER_FIRMWARE). Without one
+# the update API stays: the application can get an image some other way.
 if(CONFIG_MFD_FRI3D_EXPANDER_UPDATE AND NOT CONFIG_MFD_FRI3D_EXPANDER_FIRMWARE STREQUAL "")
   get_filename_component(fri3d_expander_fw ${CONFIG_MFD_FRI3D_EXPANDER_FIRMWARE} ABSOLUTE
                          BASE_DIR ${APPLICATION_SOURCE_DIR})
-  if(NOT EXISTS ${fri3d_expander_fw})
-    message(FATAL_ERROR "CONFIG_MFD_FRI3D_EXPANDER_FIRMWARE: ${fri3d_expander_fw} not found")
-  endif()
+endif()
+if(fri3d_expander_fw AND NOT EXISTS ${fri3d_expander_fw})
+  message(WARNING "CONFIG_MFD_FRI3D_EXPANDER_FIRMWARE: ${fri3d_expander_fw} not found, "
+          "building without a bundled image")
+elseif(fri3d_expander_fw)
   generate_inc_file_for_target(${ZEPHYR_CURRENT_LIBRARY} ${fri3d_expander_fw}
                                ${ZEPHYR_BINARY_DIR}/include/generated/fri3d_expander_firmware.inc)
   zephyr_library_compile_definitions(FRI3D_EXPANDER_HAS_FIRMWARE)
