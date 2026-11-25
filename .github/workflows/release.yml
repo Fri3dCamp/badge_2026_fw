@@ -33,6 +33,7 @@ jobs:
           prefix: "v"
 
       - name: Run PlatformIO Build
+        working-directory: firmware
         run: pio run -e release
         env:
           PLATFORMIO_BUILD_FLAGS: "-DVERSION_MAJOR=\\\"${{ steps.tag.outputs.major }}\\\" -DVERSION_MINOR=\\\"${{ steps.tag.outputs.minor }}\\\" -DVERSION_PATCH=\\\"${{ steps.tag.outputs.patch }}\\\""
@@ -47,4 +48,4 @@ jobs:
           name: Release ${{ github.ref_name }}
           draft: true
           prerelease: false
-          files: .pio/build/**/firmware.bin
+          files: firmware/.pio/build/**/firmware.bin
