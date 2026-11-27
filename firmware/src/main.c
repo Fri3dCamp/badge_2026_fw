@@ -151,6 +151,13 @@
 #define TIMER_FREQ ((SystemCoreClock / 10000) - 1)
 
 /*
+ * The PWM outputs (LCD backlight, debug LED) count 0..PWM_PERIOD: with a
+ * brightness of 0..100 as the compare value, 0 % and 100 % are steady levels
+ * (the output does not switch at all) and every step is exactly 1 %.
+ */
+#define PWM_PERIOD (99)
+
+/*
  * I2C register map layout (also the memory layout of addon_data_t / raw_data[]):
  *
  *   Offset  Size  Description
@@ -1053,14 +1060,14 @@ int main(void)
      *   into the compare register (CCR), so the duty cycle tracks the variable
      *   automatically without any extra CPU writes.
      */
-    LCD_PWM_Init(100, TIMER_FREQ, state.data.lcd_brightness);
+    LCD_PWM_Init(PWM_PERIOD, TIMER_FREQ, state.data.lcd_brightness);
     LCD_PWM_DMA_Init((u32)&state.data.lcd_brightness);
     TIM_DMACmd(LCD_BACKLIGHT_TIM, TIM_DMA_Update, ENABLE);
     TIM_Cmd(LCD_BACKLIGHT_TIM, ENABLE);
     TIM_CtrlPWMOutputs(LCD_BACKLIGHT_TIM, ENABLE);
 
     /* configure the Debug LED PWM output using DMA (same mechanism as above) */
-    LED_PWM_Init(100, TIMER_FREQ, state.data.led_brightness);
+    LED_PWM_Init(PWM_PERIOD, TIMER_FREQ, state.data.led_brightness);
     LED_PWM_DMA_Init((u32)&state.data.led_brightness);
     TIM_DMACmd(DEBUG_LED_TIM, TIM_DMA_Update, ENABLE);
     TIM_Cmd(DEBUG_LED_TIM, ENABLE);
